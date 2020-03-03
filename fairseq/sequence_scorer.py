@@ -88,7 +88,7 @@ class SequenceScorer(object):
                     probs[idx:end] = tgt_probs.view(-1)
                     idx = end
                 sample['target'] = orig_target
-
+            
             probs = probs.view(sample['target'].shape)
 
             if 'knn_dstore' in kwargs:
@@ -107,6 +107,7 @@ class SequenceScorer(object):
                     yhat_knn_prob = yhat_knn_prob.half()
                     probs = probs.half()
 
+                orig_probs = probs
                 probs = combine_knn_and_vocab_probs(
                             yhat_knn_prob, probs, self.args.lmbda)
 
@@ -135,6 +136,8 @@ class SequenceScorer(object):
                 if sample['target'] is not None else None
             tgt_len = ref.numel()
             avg_probs_i = avg_probs[i][start_idxs[i]:start_idxs[i] + tgt_len]
+            orig_probs_i = orig_probs[i][start_idxs[i]:start_idxs[i] + tgt_len]
+            yhat_knn_prob_i = yhat_knn_prob[i][start_idxs[i]:start_idxs[i] + tgt_len]
             score_i = avg_probs_i.sum() / tgt_len
             if avg_attn is not None:
                 avg_attn_i = avg_attn[i]
@@ -156,6 +159,8 @@ class SequenceScorer(object):
                 'attention': avg_attn_i,
                 'alignment': alignment,
                 'positional_scores': avg_probs_i,
+                'original_scores': orig_probs_i,
+                'yhat_scores': yhat_knn_prob_i,
                 'dstore_keys': decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:] if self.args.save_knnlm_dstore else None,
             }])
         return hypos
