@@ -22,7 +22,7 @@ from fairseq.meters import StopwatchMeter, TimeMeter
 from fairseq.sequence_scorer import SequenceScorer
 from fairseq.knnlm import KNN_Dstore
 
-import spacy; nlp = spacy.load('en_core_web_sm')
+# import spacy; nlp = spacy.load('en_core_web_sm')
 
 
 logging.basicConfig(
@@ -171,9 +171,9 @@ def main(parsed_args):
 
         dstore_idx = 0
 
-        knn_probs_file = open(args.output_probs_file_prefix + '.knn.txt', 'w', newline='')
-        orig_probs_file = open(args.output_probs_file_prefix + '.orig.txt', 'w', newline='')
-        # writer = csv.writer(csvfile)
+        knn_probs_file = open(args.output_log_probs_file_prefix + '.knn.txt', 'w')
+        orig_probs_file = open(args.output_log_probs_file_prefix + '.orig.txt', 'w')
+        tokens_file = open(args.output_tokens_file, 'w')
             
         for ex_i, sample in enumerate(t):
             if 'net_input' not in sample:
@@ -219,10 +219,14 @@ def main(parsed_args):
                 orig_scores = hypo['original_scores'].float()
                 yhat_scores = hypo['yhat_scores'].float()
 
-                knn_probs_file.write(' '.join([str(prob) for prob in yhat_scores.tolist()]))
-                orig_probs_file.write(' '.join([str(prob) for prob in orig_scores.tolist()]))
-
                 word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
+
+                knn_probs_file.write('\n'.join([str(prob) for prob in yhat_scores.tolist()]) + '\n')
+                orig_probs_file.write('\n'.join([str(prob) for prob in orig_scores.tolist()]) + '\n')
+                tokens_file.write('\n'.join(word_tokens) + '\n')
+
+                assert len(yhat_scores.tolist()) == len(word_tokens)
+
                 
                 '''
                 doc = spacy.tokens.doc.Doc(
@@ -287,17 +291,16 @@ def main(parsed_args):
         print("Keys", dstore_keys.shape, dstore_keys.dtype)
         print("Vals", dstore_vals.shape, dstore_vals.dtype)
     
-    #csvfile.close()
     knn_probs_file.close()
     orig_probs_file.close()
+    tokens_file.close()
 
     # Entities
     # mask = torch.tensor([1 if token.ent_type_ else 0 for token in doc], dtype=float)
     # count_entities = mask.sum()
-    #if torch.cuda.is_available() and not parsed_args.cpu:
-    #    mask = mask.cuda()
-
-    avg_nll_loss_entities = - (pos_scores * mask).sum() / count_entities.cpu() / math.log(2)
+    # if torch.cuda.is_available() and not parsed_args.cpu:
+    #     mask = mask.cuda()
+    # avg_nll_loss_entities = - (pos_scores * mask).sum() / count_entities.cpu() / math.log(2)
 
     avg_nll_loss = -score_sum / count / math.log(2)  # convert to base 2
     logger.info('Evaluated {} tokens in {:.1f}s ({:.2f} tokens/s)'.format(
