@@ -22,6 +22,9 @@ with open('wiki.valid.log_probs.orig.txt') as infile:
 with open('wiki.valid.tokens') as infile:
     tokens = infile.read().split()
 
+with open('wiki.train.tokens') as infile:
+    train_tokens = infile.read().split()
+
 def compare_and_plot_knnlm_parametric():
     print("knnlm prob > parametric prob: {:.2%}".format((knn_log_probs > orig_log_probs).mean()))
     print("knnlm didn't find correct word: {:.2%}".format((knn_log_probs == -10000.0).mean()))
@@ -172,6 +175,23 @@ def print_examples():
     print('=' * 80)
     print('\n\n')
 
+def print_validation_examples():
+    with open('wiki.valid.dists.txt') as infile:
+        dists = [eval(line.strip()) for line in infile]
+
+    with open('wiki.valid.knn_indices.txt') as infile:
+        knn_indices = [eval(line.strip()) for line in infile]
+
+    for i, (token, dists_for_token, knn_indices_for_token) in enumerate(zip(tokens, dists, knn_indices)):
+        context_size = 20
+        print("Example:", " ".join(tokens[i - context_size:i]), "[[", token, "]]")
+        best_dist_indices = np.argsort(dists_for_token)[-5:][::-1]
+        for j, neighbor_index in best_dist_indices:
+            distance = dists_for_token[neighbor_index]
+            knn_index = knn_indices_for_token[neighbor_index]
+            print("Best neighbor {} (distance {:.2f}):".format(j, distance), " ".join(train_tokens[knn_index - context_size:knn_index]), "[[", train_tokens[knn_index], "]]")
+        print()
+        input()
 
 if __name__ == "__main__":
     compare_and_plot_knnlm_parametric()
@@ -179,5 +199,5 @@ if __name__ == "__main__":
     # compare_knn_parametric_word_frequency()
     # compare_knn_parametric_word_frequency_difference()
     # print_examples()
-
+    print_validation_examples()
 
