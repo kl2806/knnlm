@@ -2,11 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math 
 import pandas as pd
+import tqdm
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 from collections import Counter
+
 
 
 plt.style.use('ggplot')
@@ -22,8 +24,12 @@ with open('wiki.valid.log_probs.orig.txt') as infile:
 with open('wiki.valid.tokens') as infile:
     tokens = infile.read().split()
 
+print("Loading training tokens...")
 with open('wiki.train.tokens') as infile:
     train_tokens = infile.read().split()
+
+print("Skipping first 1536 training tokens...")
+train_tokens = train_tokens[1536:]
 
 def compare_and_plot_knnlm_parametric():
     print("knnlm prob > parametric prob: {:.2%}".format((knn_log_probs > orig_log_probs).mean()))
@@ -176,25 +182,36 @@ def print_examples():
     print('\n\n')
 
 def print_validation_examples():
+    print("Loading validation distances...")
     with open('wiki.valid.dists.txt') as infile:
-        dists = [eval(line.strip()) for line in infile]
+        lines = infile.readlines()[:5000]
+        dists = []
+        for line in tqdm.tqdm(lines):
+            dists.append(eval(line.strip()))
 
+    print("Loading validation KNN indices...")
     with open('wiki.valid.knn_indices.txt') as infile:
-        knn_indices = [eval(line.strip()) for line in infile]
+        lines = infile.readlines()[:5000]
+        knn_indices = []
+        for line in tqdm.tqdm(lines):
+            knn_indices.append(eval(line.strip()))
 
     for i, (token, dists_for_token, knn_indices_for_token) in enumerate(zip(tokens, dists, knn_indices)):
         context_size = 20
-        print("Example:", " ".join(tokens[i - context_size:i]), "[[", token, "]]")
-        best_dist_indices = np.argsort(dists_for_token)[-5:][::-1]
-        for j, neighbor_index in best_dist_indices:
+        num_neighbors = 10
+        print("Example:", " ".join(tokens[max(i - context_size, 0):i]), "[[", token, "]]")
+        best_dist_indices = np.argsort(dists_for_token)[-num_neighbors:][::-1]
+        for j, neighbor_index in enumerate(best_dist_indices):
             distance = dists_for_token[neighbor_index]
             knn_index = knn_indices_for_token[neighbor_index]
             print("Best neighbor {} (distance {:.2f}):".format(j, distance), " ".join(train_tokens[knn_index - context_size:knn_index]), "[[", train_tokens[knn_index], "]]")
+        print("Original log prob:", orig_log_probs[i])
+        print("KNN log prob:", knn_log_probs[i])
         print()
         input()
 
 if __name__ == "__main__":
-    compare_and_plot_knnlm_parametric()
+    # compare_and_plot_knnlm_parametric()
     # compare_knn_parametric_spacy()
     # compare_knn_parametric_word_frequency()
     # compare_knn_parametric_word_frequency_difference()

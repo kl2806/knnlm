@@ -98,6 +98,7 @@ class KNN_Dstore(object):
         queries = queries.view(-1, qshape[-1])
         tgt = tgt.contiguous().view(-1)
         dists, knns = self.get_knns(queries[tgt != pad_idx])
+
         # (T_reducedxB)xK
         dists = torch.from_numpy(dists).cuda()
         start = time.time()
@@ -113,6 +114,15 @@ class KNN_Dstore(object):
         full_yhat_knn_prob = torch.full([qshape[0]*qshape[1]], -10000).cuda()
         full_yhat_knn_prob[tgt != pad_idx] = yhat_knn_prob
 
+        dists_full = torch.full((qshape[0]*qshape[1], dists.shape[-1]), 10000.0, dtype=dists.dtype).cuda()
+        dists_full[tgt != pad_idx] = dists 
+        
+        knns = torch.from_numpy(knns).cuda()
+        knns_full = torch.full((qshape[0]*qshape[1], knns.shape[-1]), -1, dtype=knns.dtype).cuda()
+        knns_full[tgt != pad_idx] = knns 
+
+        assert dists.size() == knns.size()
+
         # TxBx1
-        return full_yhat_knn_prob.view(qshape[0], qshape[1], 1)
+        return full_yhat_knn_prob.view(qshape[0], qshape[1], 1), dists_full.view(qshape[0], qshape[1], -1), knns_full.view(qshape[0], qshape[1], -1)
 

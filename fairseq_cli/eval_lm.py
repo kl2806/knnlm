@@ -171,8 +171,10 @@ def main(parsed_args):
 
         dstore_idx = 0
 
-        knn_probs_file = open(args.output_log_probs_file_prefix + '.knn.txt', 'w')
-        orig_probs_file = open(args.output_log_probs_file_prefix + '.orig.txt', 'w')
+        #knn_probs_file = open(args.output_log_probs_file_prefix + '.knn.txt', 'w')
+        #orig_probs_file = open(args.output_log_probs_file_prefix + '.orig.txt', 'w')
+        dists_file = open(args.output_log_probs_file_prefix + '.dists.txt', 'w')
+        knns_file = open(args.output_log_probs_file_prefix + '.knn_indices.txt', 'w')
         tokens_file = open(args.output_tokens_file, 'w')
             
         for ex_i, sample in enumerate(t):
@@ -218,11 +220,17 @@ def main(parsed_args):
                 pos_scores = hypo['positional_scores'].float()
                 orig_scores = hypo['original_scores'].float()
                 yhat_scores = hypo['yhat_scores'].float()
+                dists_full = hypo['dists_full'].float()
+                knns_full = hypo['knns_full']
 
                 word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
 
-                knn_probs_file.write('\n'.join([str(prob) for prob in yhat_scores.tolist()]) + '\n')
-                orig_probs_file.write('\n'.join([str(prob) for prob in orig_scores.tolist()]) + '\n')
+                # knn_probs_file.write('\n'.join([str(prob) for prob in yhat_scores.tolist()]) + '\n')
+                # orig_probs_file.write('\n'.join([str(prob) for prob in orig_scores.tolist()]) + '\n')
+
+                dists_file.write('\n'.join([str(dists_for_token) for dists_for_token in dists_full.tolist()]) + '\n')
+                knns_file.write('\n'.join([str(knns_for_token) for knns_for_token in knns_full.tolist()]) + '\n')
+
                 tokens_file.write('\n'.join(word_tokens) + '\n')
 
                 assert len(yhat_scores.tolist()) == len(word_tokens)
@@ -291,8 +299,8 @@ def main(parsed_args):
         print("Keys", dstore_keys.shape, dstore_keys.dtype)
         print("Vals", dstore_vals.shape, dstore_vals.dtype)
     
-    knn_probs_file.close()
-    orig_probs_file.close()
+    # knn_probs_file.close()
+    # orig_probs_file.close()
     tokens_file.close()
 
     # Entities
