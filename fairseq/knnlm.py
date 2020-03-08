@@ -97,7 +97,7 @@ class KNN_Dstore(object):
         # reshape: (TxB)xC
         qshape = queries.shape
         queries = queries.view(-1, qshape[-1])
-        if tgt:
+        if tgt is not None:
             tgt = tgt.contiguous().view(-1)
             dists, knns = self.get_knns(queries[tgt != pad_idx])
         else:
@@ -107,12 +107,12 @@ class KNN_Dstore(object):
         # (T_reducedxB)xK
         dists = torch.from_numpy(dists).cuda()
         start = time.time()
-        if tgt:
+        if tgt is not None:
             dists = dist_func(dists, knns, queries[tgt != pad_idx, :], function=self.sim_func)
         else:
             dists = dist_func(dists, knns, queries, function=self.sim_func)
         probs = utils.log_softmax(dists, dim=-1)
-        if tgt:
+        if tgt is not None:
             index_mask = torch.eq(torch.from_numpy(self.vals[knns]).long().cuda().squeeze(-1), tgt[tgt != pad_idx].unsqueeze(-1)).float()
             index_mask[index_mask == 0] = -10000 # for stability
             index_mask[index_mask == 1] = 0
@@ -135,7 +135,7 @@ class KNN_Dstore(object):
             full_yhat_knn_prob[:,idx_unique] = yhat_knn_prob_retrieved_tokens
 
         dists_full = torch.full((qshape[0]*qshape[1], dists.shape[-1]), 10000.0, dtype=dists.dtype).cuda()
-        if tgt:
+        if tgt is not None:
             dists_full[tgt != pad_idx] = dists 
         
         knns = torch.from_numpy(knns).cuda()
@@ -146,7 +146,7 @@ class KNN_Dstore(object):
         assert dists.size() == knns.size()
 
         # TxBx1
-        if tgt:
+        if tgt is not None:
             return full_yhat_knn_prob.view(qshape[0], qshape[1], 1), dists_full.view(qshape[0], qshape[1], -1), knns_full.view(qshape[0], qshape[1], -1)
         else:
             return full_yhat_knn_prob.view(qshape[0], qshape[1], self.vocab_size), dists_full.view(qshape[0], qshape[1], -1), knns_full.view(qshape[0], qshape[1], -1)
