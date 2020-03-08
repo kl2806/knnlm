@@ -13,9 +13,11 @@ import os
 import sys
 
 import torch
+import numpy as np
 
 from fairseq import bleu, checkpoint_utils, options, progress_bar, tasks, utils
 from fairseq.meters import StopwatchMeter, TimeMeter
+from fairseq.knnlm import KNN_Dstore
 
 
 def main(args):
@@ -70,6 +72,10 @@ def _main(args, output_file):
         task=task,
     )
 
+    for arg in vars(_model_args).keys():
+        if arg in {'decoder_embed_dim', 'vocab_size',}:
+            setattr(args, arg, getattr(_model_args, arg))
+
     # Optimize ensemble for generation
     for model in models:
         model.make_generation_fast_(
@@ -80,6 +86,12 @@ def _main(args, output_file):
             model.half()
         if use_cuda:
             model.cuda()
+
+    if args.knnlm and args.save_knnlm_dstore:
+        raise ValueError("Cannot use knnlm while trying to build the datastore!")
+
+    if args.knnlm:
+        knn_dstore = KNN_Dstore(args)
 
     # Load alignment dictionary for unknown word replacement
     # (None if no unknown word replacement, empty if no path to align dictionary)
@@ -110,6 +122,19 @@ def _main(args, output_file):
         scorer = bleu.SacrebleuScorer()
     else:
         scorer = bleu.Scorer(tgt_dict.pad(), tgt_dict.eos(), tgt_dict.unk())
+
+    if args.save_knnlm_dstore:
+        print('keytype being saved:', args.knn_keytype)
+        if args.dstore_fp16:
+            print('Saving fp16')
+            dstore_keys = np.memmap(args.dstore_mmap+'_keys.npy', dtype=np.float16, mode='w+', shape=(args.dstore_size, args.decoder_embed_dim))
+            dstore_vals = np.memmap(args.dstore_mmap+'_vals.npy', dtype=np.int16, mode='w+', shape=(args.dstore_size, 1))
+        else:
+            print('Saving fp32')
+            dstore_keys = np.memmap(args.dstore_mmap+'_keys.npy', dtype=np.float32, mode='w+', shape=(args.dstore_size, args.decoder_embed_dim))
+            dstore_vals = np.memmap(args.dstore_mmap+'_vals.npy', dtype=np.int, mode='w+', shape=(args.dstore_size, 1))
+    dstore_idx = 0
+
     num_sentences = 0
     has_target = True
     with progress_bar.build_progress_bar(args, itr) as t:
@@ -124,9 +149,30 @@ def _main(args, output_file):
                 prefix_tokens = sample['target'][:, :args.prefix_size]
 
             gen_timer.start()
-            hypos = task.inference_step(generator, models, sample, prefix_tokens)
+            hypos = task.inference_step(generator, models, sample, prefix_tokens, knn_dstore=knn_dstore)
             num_generated_tokens = sum(len(h[0]['tokens']) for h in hypos)
             gen_timer.stop(num_generated_tokens)
+
+            if args.save_knnlm_dstore:
+                for i, hypos_i in enumerate(hypos):
+                    hypo = hypos_i[0]
+                    shape = hypo['dstore_keys'].shape                    
+                    if dstore_idx + shape[0] > args.dstore_size:
+                        shape = [args.dstore_size - dstore_idx]
+                        hypo['dstore_keys'] = hypo['dstore_keys'][:shape[0]]
+                    # import pdb; pdb.set_trace()
+                    # print(hypo)
+                    if args.dstore_fp16:
+                        dstore_keys[dstore_idx:shape[0]+dstore_idx] = hypo['dstore_keys'].view(
+                           -1, args.decoder_embed_dim).cpu().numpy().astype(np.float16)
+                        dstore_vals[dstore_idx:shape[0]+dstore_idx] = hypo['tokens'].view(
+                           -1, 1).cpu().numpy().astype(np.int16)
+                    else:
+                        dstore_keys[dstore_idx:shape[0]+dstore_idx] = hypo['dstore_keys'].view(
+                           -1, args.decoder_embed_dim).cpu().numpy().astype(np.float32)
+                        dstore_vals[dstore_idx:shape[0]+dstore_idx] = hypo['tokens'].view(
+                           -1, 1).cpu().numpy().astype(np.int)
+                    dstore_idx += shape[0]                    
 
             for i, sample_id in enumerate(sample['id'].tolist()):
                 has_target = sample['target'] is not None
@@ -218,6 +264,11 @@ def _main(args, output_file):
         num_sentences, gen_timer.n, gen_timer.sum, num_sentences / gen_timer.sum, 1. / gen_timer.avg))
     if has_target:
         logger.info('Generate {} with beam={}: {}'.format(args.gen_subset, args.beam, scorer.result_string()))
+    
+    if args.save_knnlm_dstore:
+        print("dstore_idx", dstore_idx, "final shape", shape)
+        print("Keys", dstore_keys.shape, dstore_keys.dtype)
+        print("Vals", dstore_vals.shape, dstore_vals.dtype)
 
     return scorer
 
@@ -230,3 +281,4 @@ def cli_main():
 
 if __name__ == '__main__':
     cli_main()
+

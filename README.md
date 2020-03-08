@@ -130,3 +130,54 @@ python eval_lm.py data-bin/wikitext-103 \
 ```
 
 If your hardware constraints make this too slow, you can run it without using full precision keys by adding two flags: `--no-load-keys` and `--knn-sim-func "do_not_recomp_l2"`. This uses the quantized versions of keys stored within the FAISS index. You can make things faster by reducing the value of the `probe` (the number of clusters FAISS checks for neighbors) at the cost of performance. You can also try reducing the number of neighbors `k`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+MT Shit
+fairseq-generate wmt14.en-fr.joined-dict.newstest2014  \
+    --path wmt14.en-fr.joined-dict.transformer/model.pt \
+    --score-reference --batch-size 128 \
+	--dstore-mmap checkpoints/dstore --knn-keytype 'last_ffn_input' \
+    --dstore-size 96311 --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
+    --save-knnlm-dstore 
+
+    --fp16 --dstore-fp16 \
+    --gen-subset train
+
+
+
+python build_dstore.py \
+    --dstore_mmap checkpoints/dstore \
+    --dstore_size 96311 \
+    --faiss_index checkpoints/knn.index \
+    --num_keys_to_add_at_a_time 500000 \
+    --starting_point 0 
+    
+
+    --dstore-fp16
+
+
+
+
+fairseq-generate wmt14.en-fr.joined-dict.newstest2014  \
+    --path wmt14.en-fr.joined-dict.transformer/model.pt \
+    --dstore-filename checkpoints/dstore \
+    --indexfile checkpoints/knn.index  \
+    --score-reference --batch-size 128 \
+    --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
+    --k 1024 --lmbda 0.99 --dstore-size 96311 --knn-keytype last_ffn_input \
+    --probe 32 --knnlm 
+
+
+    --fp16 \
+    --dstore-fp16

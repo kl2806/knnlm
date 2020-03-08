@@ -214,6 +214,7 @@ class FairseqTask(object):
             return SequenceScorer(
                 self.target_dictionary,
                 compute_alignment=getattr(args, 'print_alignment', False),
+                args=args,
             )
 
         from fairseq.sequence_generator import SequenceGenerator, SequenceGeneratorWithAlignment
@@ -312,9 +313,9 @@ class FairseqTask(object):
             loss, sample_size, logging_output = criterion(model, sample)
         return loss, sample_size, logging_output
 
-    def inference_step(self, generator, models, sample, prefix_tokens=None):
+    def inference_step(self, generator, models, sample, prefix_tokens=None, knn_dstore=None):
         with torch.no_grad():
-            return generator.generate(models, sample, prefix_tokens=prefix_tokens)
+            return generator.generate(models, sample, prefix_tokens=prefix_tokens, knn_dstore=knn_dstore)
 
     def begin_epoch(self, epoch, model):
         """Hook function called before the start of each epoch."""

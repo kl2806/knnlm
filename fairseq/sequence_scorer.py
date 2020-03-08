@@ -106,7 +106,6 @@ class SequenceScorer(object):
                 if self.args.fp16:
                     yhat_knn_prob = yhat_knn_prob.half()
                     probs = probs.half()
-
                 probs = combine_knn_and_vocab_probs(
                             yhat_knn_prob, probs, self.args.lmbda)
 
@@ -150,12 +149,18 @@ class SequenceScorer(object):
                     alignment = None
             else:
                 avg_attn_i = alignment = None
+            if not self.args.save_knnlm_dstore:
+                dstore_keys = None
+            elif self.args.task == 'translation': # TODO, it seems like you need to trim some padding for MT
+                dstore_keys = decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:][0:tgt_len]
+            elif self.args.task == 'language_modeling':
+                dstore_keys = decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:]
             hypos.append([{
                 'tokens': ref,
                 'score': score_i,
                 'attention': avg_attn_i,
                 'alignment': alignment,
                 'positional_scores': avg_probs_i,
-                'dstore_keys': decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:] if self.args.save_knnlm_dstore else None,
+                'dstore_keys': dstore_keys, 
             }])
         return hypos
