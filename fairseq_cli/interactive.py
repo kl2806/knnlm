@@ -13,11 +13,13 @@ import logging
 import math
 import sys
 import os
+import numpy as np
 
 import torch
 
 from fairseq import checkpoint_utils, options, tasks, utils
 from fairseq.data import encoders
+from fairseq.knnlm import KNN_Dstore
 
 
 logging.basicConfig(
@@ -71,18 +73,12 @@ def make_batches(lines, args, task, max_positions, encode_fn):
 def main(args):
     utils.import_user_module(args)
 
-    if args.buffer_size < 1:
-        args.buffer_size = 1
-    if args.max_tokens is None and args.max_sentences is None:
-        args.max_sentences = 1
-
     assert not args.sampling or args.nbest == args.beam, \
         '--sampling requires --nbest to be equal to --beam'
     assert not args.max_sentences or args.max_sentences <= args.buffer_size, \
         '--max-sentences/--batch-size cannot be larger than --buffer-size'
 
     logger.info(args)
-
     use_cuda = torch.cuda.is_available() and not args.cpu
 
     # Setup task, e.g., translation
@@ -95,6 +91,30 @@ def main(args):
         arg_overrides=eval(args.model_overrides),
         task=task,
     )
+
+    for arg in vars(_model_args).keys():
+        '''if arg not in {
+            'self_target', 'future_target', 'past_target', 'tokens_per_sample',
+            'output_size_dictionary', 'add_bos_token',
+        }:'''
+        if arg in {
+            'decoder_embed_dim', 'vocab_size'
+        }:
+            setattr(args, arg, getattr(_model_args, arg))
+
+    logger.info(args)
+    
+    if args.knnlm and args.save_knnlm_dstore:
+        raise ValueError("Cannot use knnlm while trying to build the datastore!")
+
+    if args.knnlm:
+        knn_dstore = KNN_Dstore(args)
+
+    if args.buffer_size < 1:
+        args.buffer_size = 1
+    if args.max_tokens is None and args.max_sentences is None:
+        args.max_sentences = 1
+
 
     # Set dictionaries
     src_dict = task.source_dictionary
@@ -161,7 +181,7 @@ def main(args):
                     'src_lengths': src_lengths,
                 },
             }
-            translations = task.inference_step(generator, models, sample)
+            translations = task.inference_step(generator, models, sample, None, knn_dstore=knn_dstore)
             for i, (id, hypos) in enumerate(zip(batch.ids.tolist(), translations)):
                 src_tokens_i = utils.strip_pad(src_tokens[i], tgt_dict.pad())
                 results.append((start_id + id, src_tokens_i, hypos))

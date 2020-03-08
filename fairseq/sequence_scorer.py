@@ -111,6 +111,7 @@ class SequenceScorer(object):
                     probs = probs.half()
 
                 orig_probs = probs
+                import pdb; pdb.set_trace()
                 probs = combine_knn_and_vocab_probs(
                             yhat_knn_prob, probs, self.args.lmbda)
 
