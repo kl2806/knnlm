@@ -176,7 +176,7 @@ def main(parsed_args):
         if args.knnlm:
             dists_file = open(args.output_log_probs_file_prefix + '.dists.txt', 'w')
             knns_file = open(args.output_log_probs_file_prefix + '.knn_indices.txt', 'w')
-        if args.save_knnlm_dstore:
+        if args.save_knnlm_dstore or args.knnlm:
             tokens_file = open(args.output_tokens_file, 'w')
             
         for ex_i, sample in enumerate(t):
@@ -216,11 +216,7 @@ def main(parsed_args):
                         dstore_idx += shape[0]
                     else:
                         print('Skipping this one with shape', shape)
-                
-                    word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]                
-                    tokens_file.write('\n'.join(word_tokens) + '\n')
-                    assert len(hypo['yhat_scores'].float().tolist()) == len(word_tokens)
-
+                                
                 sample_id = sample['id'][i]
 
                 tokens = hypo['tokens']
@@ -238,7 +234,11 @@ def main(parsed_args):
                     dists_file.write('\n'.join([str(dists_for_token) for dists_for_token in dists_full.tolist()]) + '\n')
                     knns_file.write('\n'.join([str(knns_for_token) for knns_for_token in knns_full.tolist()]) + '\n')
 
-                
+                if args.save_knnlm_dstore or args.knnlm:
+                    word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]                
+                    tokens_file.write('\n'.join(word_tokens) + '\n')
+                    assert len(hypo['yhat_scores'].float().tolist()) == len(word_tokens)
+
                 '''
                 doc = spacy.tokens.doc.Doc(
                     nlp.vocab, words=word_tokens, spaces=[True for token in tokens])
@@ -335,3 +335,4 @@ def cli_main():
 
 if __name__ == '__main__':
     cli_main()
+

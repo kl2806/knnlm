@@ -132,6 +132,7 @@ class KNN_Dstore(object):
             full_yhat_knn_prob = torch.full([qshape[0]*qshape[1]], -10000).cuda()
             full_yhat_knn_prob[tgt != pad_idx] = yhat_knn_prob
 
+	# TODO, this won't work for batched or beam > 1
         else:
             idx = torch.from_numpy(self.vals[knns]).long().cuda().squeeze(-1)
             idx_unique = idx.unique(sorted=True).cuda()
