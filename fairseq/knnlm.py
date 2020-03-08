@@ -70,26 +70,31 @@ class KNN_Dstore(object):
 
     def get_knn_log_prob(self, queries, tgt, pad_idx):
         def dist_func(d, k, q, function=None):
+            d = d.cpu()
+            q = q.cpu()
             if not function:
                 # Default behavior for L2 metric is to recompute distances.
                 # Default behavior for IP metric is to return faiss distances.
                 qsize = q.shape
                 if self.metric_type == 'l2':
                     start = time.time()
-                    knns_vecs = torch.from_numpy(self.keys[k]).cuda().view(qsize[0], self.k, -1)
+                    knns_vecs = torch.from_numpy(self.keys[k]).view(qsize[0], self.k, -1)
                     if self.half:
                         knns_vecs = knns_vecs.half()
                     query_vecs = q.view(qsize[0], 1, qsize[1]).repeat(1, self.k, 1)
                     l2 = torch.sum((query_vecs - knns_vecs.detach())**2, dim=2)
                     return -1 * l2
+                d = d.cuda(); q = q.cuda()
                 return d
 
             if function == 'dot':
                 qsize = q.shape
-                return (torch.from_numpy(self.keys[k]).cuda() * q.view(qsize[0], 1, qsize[1])).sum(dim=-1)
+                d = d.cuda(); q = q.cuda()
+                return (torch.from_numpy(self.keys[k]) * q.view(qsize[0], 1, qsize[1])).sum(dim=-1).cuda()
 
             if function == 'do_not_recomp_l2':
-                return -1 * d
+                d = d.cuda(); q = q.cuda()
+                return -1 * d.cuda()
 
             raise ValueError("Invalid knn similarity function!")
 
@@ -108,17 +113,22 @@ class KNN_Dstore(object):
         dists = torch.from_numpy(dists).cuda()
         start = time.time()
         if tgt is not None:
-            dists = dist_func(dists, knns, queries[tgt != pad_idx, :], function=self.sim_func)
+            dists = dist_func(dists, knns, queries[tgt != pad_idx, :], function=self.sim_func).cuda()
         else:
-            dists = dist_func(dists, knns, queries, function=self.sim_func)
-        probs = utils.log_softmax(dists, dim=-1)
+            dists = dist_func(dists, knns, queries, function=self.sim_func).cuda()
+        probs = utils.softmax(dists, dim=-1).cuda()
         if tgt is not None:
             index_mask = torch.eq(torch.from_numpy(self.vals[knns]).long().cuda().squeeze(-1), tgt[tgt != pad_idx].unsqueeze(-1)).float()
-            index_mask[index_mask == 0] = -10000 # for stability
-            index_mask[index_mask == 1] = 0
+            index_mask[index_mask == 0] = 0 # for stability
+            index_mask[index_mask == 1] = 1
 
             # (T_reducedxB)
-            yhat_knn_prob = torch.logsumexp(probs + index_mask, dim=-1).clone()
+            yhat_knn_prob = torch.sum(probs * index_mask, dim=-1).clone()
+            for i, val in enumerate(yhat_knn_prob):
+                if val < 1e-6:
+                    yhat_knn_prob[i] = torch.FloatTensor([-10000]).squeeze()
+                else:
+                    yhat_knn_prob[i] = torch.log(yhat_knn_prob[i])
             full_yhat_knn_prob = torch.full([qshape[0]*qshape[1]], -10000).cuda()
             full_yhat_knn_prob[tgt != pad_idx] = yhat_knn_prob
 
@@ -127,12 +137,12 @@ class KNN_Dstore(object):
             idx_unique = idx.unique(sorted=True).cuda()
             yhat_knn_prob_retrieved_tokens = torch.zeros(len(idx_unique)).cuda()
             for enumerate_idx, idx_unique_curr in enumerate(idx_unique):
-                yhat_knn_prob_retrieved_tokens[enumerate_idx] = (probs * (idx == idx_unique_curr)).sum()
+                yhat_knn_prob_retrieved_tokens[enumerate_idx] = torch.sum((probs * (idx == idx_unique_curr)), dim=-1).clone()
 
             # yhat_knn_prob_retrieved_tokens = torch.zeros(len(idx_unique)) #.cuda().scatter_add(0, idx.squeeze(), probs.squeeze()).cuda()
 
             full_yhat_knn_prob = torch.full((qshape[0]*qshape[1], self.vocab_size), -10000).cuda()
-            full_yhat_knn_prob[:,idx_unique] = yhat_knn_prob_retrieved_tokens
+            full_yhat_knn_prob[:,idx_unique] = torch.log(yhat_knn_prob_retrieved_tokens)
 
         dists_full = torch.full((qshape[0]*qshape[1], dists.shape[-1]), 10000.0, dtype=dists.dtype).cuda()
         if tgt is not None:
@@ -140,7 +150,7 @@ class KNN_Dstore(object):
         
         knns = torch.from_numpy(knns).cuda()
         knns_full = torch.full((qshape[0]*qshape[1], knns.shape[-1]), -1, dtype=knns.dtype).cuda()
-        if tgt:
+        if tgt is not None:
             knns_full[tgt != pad_idx] = knns 
 
         assert dists.size() == knns.size()

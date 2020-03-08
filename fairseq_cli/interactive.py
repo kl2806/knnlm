@@ -109,6 +109,12 @@ def main(args):
 
     if args.knnlm:
         knn_dstore = KNN_Dstore(args)
+        #print("Loading training tokens...")
+        #with open('wiki.train.tokens') as infile:
+        #    train_tokens = infile.read().split()
+
+        #print("Skipping first 1536 training tokens...")
+        #train_tokens = train_tokens[1536:]
 
     if args.buffer_size < 1:
         args.buffer_size = 1
@@ -197,6 +203,19 @@ def main(args):
 
             # Process top predictions
             for hypo in hypos[:min(len(hypos), args.nbest)]:
+                print('len hypos', len(hypos))
+                print(hypos)
+                assert hypo['dists_full'] != None
+                dists_full = hypo['dists_full'].float()
+                knns_full = hypo['knns_full']
+                word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
+                #assert len(yhat_scores.tolist()) == len(word_tokens)
+                
+                print(dists_full.shape)
+                print(dists_full)
+                print(knns_full)
+                print(word_tokens)
+
                 hypo_tokens, hypo_str, alignment = utils.post_process_prediction(
                     hypo_tokens=hypo['tokens'].int().cpu(),
                     src_str=src_str,

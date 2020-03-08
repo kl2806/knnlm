@@ -191,6 +191,8 @@ def main(parsed_args):
             gen_timer.stop(sample['ntokens'])
 
             for i, hypos_i in enumerate(hypos):
+                if i == len(hypos) - 1:
+                    continue
                 hypo = hypos_i[0]
                 if args.save_knnlm_dstore:
                     shape = hypo['dstore_keys'].shape
@@ -220,20 +222,19 @@ def main(parsed_args):
                 pos_scores = hypo['positional_scores'].float()
                 orig_scores = hypo['original_scores'].float()
                 yhat_scores = hypo['yhat_scores'].float()
-                dists_full = hypo['dists_full'].float()
-                knns_full = hypo['knns_full']
+                if args.knnlm:
+                    assert hypo['dists_full'] != None
+                    dists_full = hypo['dists_full'].float()
+                    knns_full = hypo['knns_full']
+                    word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
+                    assert len(yhat_scores.tolist()) == len(word_tokens)
+                    # knn_probs_file.write('\n'.join([str(prob) for prob in yhat_scores.tolist()]) + '\n')
+                    # orig_probs_file.write('\n'.join([str(prob) for prob in orig_scores.tolist()]) + '\n')
+                    dists_file.write('\n'.join([str(dists_for_token) for dists_for_token in dists_full.tolist()]) + '\n')
+                    knns_file.write('\n'.join([str(knns_for_token) for knns_for_token in knns_full.tolist()]) + '\n')
+                    tokens_file.write('\n'.join(word_tokens) + '\n')
+ 
 
-                word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
-
-                # knn_probs_file.write('\n'.join([str(prob) for prob in yhat_scores.tolist()]) + '\n')
-                # orig_probs_file.write('\n'.join([str(prob) for prob in orig_scores.tolist()]) + '\n')
-
-                dists_file.write('\n'.join([str(dists_for_token) for dists_for_token in dists_full.tolist()]) + '\n')
-                knns_file.write('\n'.join([str(knns_for_token) for knns_for_token in knns_full.tolist()]) + '\n')
-
-                tokens_file.write('\n'.join(word_tokens) + '\n')
-
-                assert len(yhat_scores.tolist()) == len(word_tokens)
 
                 
                 '''

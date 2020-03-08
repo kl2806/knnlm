@@ -571,12 +571,14 @@ class EnsembleModel(torch.nn.Module):
         def combine_knn_and_vocab_probs(knn_p, vocab_p, coeff):
             combine_probs = torch.stack([vocab_p, knn_p], dim=0)
             coeffs = torch.ones_like(combine_probs)
-            coeffs[0] = np.log(1 - coeff)
-            coeffs[1] = np.log(coeff)
+            if coeff == 1.0: # special case where we do only non-parametric
+                coeffs[0] = -10000
+                coeffs[1] = 0.0
+            else:
+                coeffs[0] = np.log(1 - coeff)
+                coeffs[1] = np.log(coeff)
             curr_prob = torch.logsumexp(combine_probs + coeffs, dim=0)
-
             return curr_prob
-
         
         if self.incremental_states is not None:
             decoder_out = list(model.forward_decoder(

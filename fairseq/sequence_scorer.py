@@ -53,6 +53,7 @@ class SequenceScorer(object):
         def combine_knn_and_vocab_probs(knn_p, vocab_p, coeff):
             combine_probs = torch.stack([vocab_p, knn_p], dim=0)
             coeffs = torch.ones_like(combine_probs)
+            assert coeff != 1.0 # have to mix when using parametric + non-parametric
             coeffs[0] = np.log(1 - coeff)
             coeffs[1] = np.log(coeff)
             curr_prob = torch.logsumexp(combine_probs + coeffs, dim=0)
@@ -143,8 +144,12 @@ class SequenceScorer(object):
             avg_probs_i = avg_probs[i][start_idxs[i]:start_idxs[i] + tgt_len]
             orig_probs_i = orig_probs[i][start_idxs[i]:start_idxs[i] + tgt_len]
             yhat_knn_prob_i = yhat_knn_prob[i][start_idxs[i]:start_idxs[i] + tgt_len]
-            dists_full_i = dists_full[i][start_idxs[i]:start_idxs[i] + tgt_len]
-            knns_full_i = knns_full[i][start_idxs[i]:start_idxs[i] + tgt_len]
+            if 'knn_dstore' in kwargs:
+                dists_full_i = dists_full[i][start_idxs[i]:start_idxs[i] + tgt_len]
+                knns_full_i = knns_full[i][start_idxs[i]:start_idxs[i] + tgt_len]
+            else:
+                dists_full_i = None
+                knns_full_i = None
             score_i = avg_probs_i.sum() / tgt_len
             if avg_attn is not None:
                 avg_attn_i = avg_attn[i]
