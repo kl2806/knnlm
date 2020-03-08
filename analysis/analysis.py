@@ -28,8 +28,8 @@ print("Loading training tokens...")
 with open('wiki.train.tokens') as infile:
     train_tokens = infile.read().split()
 
-print("Skipping first 1536 training tokens...")
-train_tokens = train_tokens[1536:]
+print("TODO, CHECK ME!!! Skipping first 1536 training tokens...")
+train_tokens = train_tokens[1536:] # TODO, this isn't needed anymore if you rerun eval_lm
 
 def compare_and_plot_knnlm_parametric():
     print("knnlm prob > parametric prob: {:.2%}".format((knn_log_probs > orig_log_probs).mean()))

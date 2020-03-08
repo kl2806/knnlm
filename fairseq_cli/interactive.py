@@ -104,17 +104,14 @@ def main(args):
 
     logger.info(args)
     
-    if args.knnlm and args.save_knnlm_dstore:
-        raise ValueError("Cannot use knnlm while trying to build the datastore!")
-
     if args.knnlm:
-        knn_dstore = KNN_Dstore(args)
+        knn_dstore = KNN_Dstore(args)        
         print("Loading training tokens...")
-        with open('wiki.train.tokens') as infile:
+        with open(args.input_tokens_file) as infile:
            train_tokens = infile.read().split()
 
-        print("Skipping first 1536 training tokens...")
-        train_tokens = train_tokens[1536:]
+        print("TODO, REMOVE ME\n\n\n !!!!Skipping first training tokens...")
+        train_tokens = train_tokens[3072:] # TODO, remove this
 
     if args.buffer_size < 1:
         args.buffer_size = 1

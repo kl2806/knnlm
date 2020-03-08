@@ -576,7 +576,7 @@ def add_generation_args(parser):
     group.add_argument('--output-log-probs-file-prefix', type=str, default=None,
                        help='output log probs')
     group.add_argument('--output-tokens-file', type=str, default=None,
-                       help='output tokens file')
+                       help='output tokens file')    
 
     # special decoding format for advanced decoding.
     group.add_argument('--decoding-format', default=None, type=str, choices=['unigram', 'ensemble', 'vote', 'dp', 'bs'])
@@ -591,6 +591,8 @@ def add_interactive_args(parser):
                        help='read this many sentences into a buffer before processing them')
     group.add_argument('--input', default='-', type=str, metavar='FILE',
                        help='file to read from; use - for stdin')
+    group.add_argument('--input-tokens-file', type=str, default=None,
+                       help='input tokens file') 
     # fmt: on
 
 

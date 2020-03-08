@@ -196,6 +196,7 @@ def main(parsed_args):
                 if i == len(hypos) - 1:
                     continue
                 hypo = hypos_i[0]
+                skipped = False
                 if args.save_knnlm_dstore:
                     shape = hypo['dstore_keys'].shape
                     if shape[0] == args.tokens_per_sample:
@@ -215,6 +216,7 @@ def main(parsed_args):
 
                         dstore_idx += shape[0]
                     else:
+                        skipped = True
                         print('Skipping this one with shape', shape)
                                 
                 sample_id = sample['id'][i]
@@ -235,9 +237,10 @@ def main(parsed_args):
                     knns_file.write('\n'.join([str(knns_for_token) for knns_for_token in knns_full.tolist()]) + '\n')
 
                 if args.save_knnlm_dstore or args.knnlm:
-                    word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]                
-                    tokens_file.write('\n'.join(word_tokens) + '\n')
-                    assert len(hypo['yhat_scores'].float().tolist()) == len(word_tokens)
+                    if not skipped:
+                        word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]                
+                        tokens_file.write('\n'.join(word_tokens) + '\n')
+                        assert len(hypo['yhat_scores'].float().tolist()) == len(word_tokens)
 
                 '''
                 doc = spacy.tokens.doc.Doc(
