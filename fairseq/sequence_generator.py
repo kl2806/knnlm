@@ -182,7 +182,7 @@ class SequenceGenerator(object):
                 return True
             return False
 
-        def finalize_hypos(step, bbsz_idx, eos_scores):
+        def finalize_hypos(step, bbsz_idx, eos_scores, dists_full, knns_full):
             """
             Finalize the given hypotheses at this step, while keeping the total
             number of finalized hypotheses per sentence <= beam_size.
@@ -249,6 +249,8 @@ class SequenceGenerator(object):
                         'attention': hypo_attn,  # src_len x tgt_len
                         'alignment': None,
                         'positional_scores': pos_scores[i],
+                        'dists_full': dists_full,
+                        'knns_full': knns_full
                     }
 
                 if len(finalized[sent]) < beam_size:
@@ -274,7 +276,7 @@ class SequenceGenerator(object):
                 model.reorder_incremental_state(reorder_state)
                 encoder_outs = model.reorder_encoder_out(encoder_outs, reorder_state)
 
-            lprobs, avg_attn_scores = model.forward_decoder(
+            lprobs, avg_attn_scores, dists_full, knns_full = model.forward_decoder(
                 tokens[:, :step + 1], encoder_outs, temperature=self.temperature, **kwargs
             )
             lprobs[lprobs != lprobs] = -math.inf
@@ -389,7 +391,7 @@ class SequenceGenerator(object):
                     mask=eos_mask[:, :beam_size],
                     out=eos_scores,
                 )
-                finalized_sents = finalize_hypos(step, eos_bbsz_idx, eos_scores)
+                finalized_sents = finalize_hypos(step, eos_bbsz_idx, eos_scores, dists_full, knns_full)
                 num_remaining_sent -= len(finalized_sents)
 
             assert num_remaining_sent >= 0
@@ -545,7 +547,7 @@ class EnsembleModel(torch.nn.Module):
         log_probs = []
         avg_attn = None
         for model, encoder_out in zip(self.models, encoder_outs):
-            probs, attn = self._decode_one(
+            probs, attn, _, _ = self._decode_one(
                 tokens,
                 model,
                 encoder_out,
@@ -605,21 +607,20 @@ class EnsembleModel(torch.nn.Module):
             # TxBxC
             queries = decoder_out[1][self.args.knn_keytype]
 
-            yhat_knn_prob, _,  _ = dstore.get_knn_log_prob(
+            yhat_knn_prob, dists_full, knns_full = dstore.get_knn_log_prob(
                     queries,
                     None,
                     pad_idx = -1)  # TODO, what is the pad idx?
-                    #pad_idx=self.pad)
+                    #pad_idx=self.pad)            
             if self.args.fp16:
                 yhat_knn_prob = yhat_knn_prob.half()
                 probs = probs.half()
             yhat_knn_prob = yhat_knn_prob[:, -1, :]
             probs = combine_knn_and_vocab_probs(
                         yhat_knn_prob, probs, self.args.lmbda)
-
-
-        return probs, attn
-
+            return probs, attn, dists_full, knns_full
+        
+        return probs, attn, None, None
 
     def reorder_encoder_out(self, encoder_outs, new_order):
         if not self.has_encoder():
@@ -736,4 +737,4 @@ class EnsembleModelWithAlignment(EnsembleModel):
             attn = attn[:, -1, :]
         probs = model.get_normalized_probs(decoder_out, log_probs=log_probs)
         probs = probs[:, -1, :]
-        return probs, attn
+        return probs, attn, None, None

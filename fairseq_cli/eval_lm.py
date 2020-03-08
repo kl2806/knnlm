@@ -173,9 +173,11 @@ def main(parsed_args):
 
         #knn_probs_file = open(args.output_log_probs_file_prefix + '.knn.txt', 'w')
         #orig_probs_file = open(args.output_log_probs_file_prefix + '.orig.txt', 'w')
-        dists_file = open(args.output_log_probs_file_prefix + '.dists.txt', 'w')
-        knns_file = open(args.output_log_probs_file_prefix + '.knn_indices.txt', 'w')
-        tokens_file = open(args.output_tokens_file, 'w')
+        if args.knnlm:
+            dists_file = open(args.output_log_probs_file_prefix + '.dists.txt', 'w')
+            knns_file = open(args.output_log_probs_file_prefix + '.knn_indices.txt', 'w')
+        if args.save_knnlm_dstore:
+            tokens_file = open(args.output_tokens_file, 'w')
             
         for ex_i, sample in enumerate(t):
             if 'net_input' not in sample:
@@ -214,6 +216,10 @@ def main(parsed_args):
                         dstore_idx += shape[0]
                     else:
                         print('Skipping this one with shape', shape)
+                
+                    word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]                
+                    tokens_file.write('\n'.join(word_tokens) + '\n')
+                    assert len(hypo['yhat_scores'].float().tolist()) == len(word_tokens)
 
                 sample_id = sample['id'][i]
 
@@ -226,15 +232,11 @@ def main(parsed_args):
                     assert hypo['dists_full'] != None
                     dists_full = hypo['dists_full'].float()
                     knns_full = hypo['knns_full']
-                    word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
-                    assert len(yhat_scores.tolist()) == len(word_tokens)
+                                        
                     # knn_probs_file.write('\n'.join([str(prob) for prob in yhat_scores.tolist()]) + '\n')
                     # orig_probs_file.write('\n'.join([str(prob) for prob in orig_scores.tolist()]) + '\n')
                     dists_file.write('\n'.join([str(dists_for_token) for dists_for_token in dists_full.tolist()]) + '\n')
                     knns_file.write('\n'.join([str(knns_for_token) for knns_for_token in knns_full.tolist()]) + '\n')
-                    tokens_file.write('\n'.join(word_tokens) + '\n')
- 
-
 
                 
                 '''

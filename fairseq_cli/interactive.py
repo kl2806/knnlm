@@ -109,12 +109,12 @@ def main(args):
 
     if args.knnlm:
         knn_dstore = KNN_Dstore(args)
-        #print("Loading training tokens...")
-        #with open('wiki.train.tokens') as infile:
-        #    train_tokens = infile.read().split()
+        print("Loading training tokens...")
+        with open('wiki.train.tokens') as infile:
+           train_tokens = infile.read().split()
 
-        #print("Skipping first 1536 training tokens...")
-        #train_tokens = train_tokens[1536:]
+        print("Skipping first 1536 training tokens...")
+        train_tokens = train_tokens[1536:]
 
     if args.buffer_size < 1:
         args.buffer_size = 1
@@ -202,19 +202,25 @@ def main(args):
                 print('S-{}\t{}'.format(id, src_str))
 
             # Process top predictions
-            for hypo in hypos[:min(len(hypos), args.nbest)]:
-                print('len hypos', len(hypos))
-                print(hypos)
+            for hypo in hypos[:min(len(hypos), args.nbest)]:                
                 assert hypo['dists_full'] != None
                 dists_full = hypo['dists_full'].float()
                 knns_full = hypo['knns_full']
                 word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
                 #assert len(yhat_scores.tolist()) == len(word_tokens)
-                
-                print(dists_full.shape)
+
+                # TODO, trim off padding when its batched
+                                
+                context_size = 20
+                num_neighbors = 10
+                print("Example:", " ".join(word_tokens))
                 print(dists_full)
-                print(knns_full)
-                print(word_tokens)
+                best_dist_indices = np.argsort(dists_full)[-num_neighbors:][::-1]
+                for j, neighbor_index in enumerate(best_dist_indices):
+                    distance = dists_full[neighbor_index]
+                    knn_index = knns_full[neighbor_index]
+                    print("Best neighbor {} (distance {:.2f}):".format(j, distance), " ".join(train_tokens[knn_index - context_size:knn_index]), "[[", train_tokens[knn_index], "]]")
+
 
                 hypo_tokens, hypo_str, alignment = utils.post_process_prediction(
                     hypo_tokens=hypo['tokens'].int().cpu(),
