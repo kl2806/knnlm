@@ -185,3 +185,59 @@ fairseq-generate wmt14.en-fr.joined-dict.newstest2014  \
     --dstore-fp16
 
     # TODO, currently cant do beam search with generator
+
+
+
+
+
+Testing
+python eval_lm.py data-bin/wikitext-103 \
+    --path checkpoints/checkpoint_best.pt \
+    --sample-break-mode none --max-tokens 3072 \
+    --softmax-batch 1024 --gen-subset valid \
+    --context-window 1536 --tokens-per-sample 1536 \
+    --dstore-mmap checkpoints/dstore --knn-keytype 'last_ffn_input' \
+    --dstore-size 107520 --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
+    --save-knnlm-dstore --fp16 \
+    --output-tokens-file debug.train.tokens
+
+
+python build_dstore.py \
+	--dstore_mmap checkpoints/dstore \
+    --dstore_size 107520 \
+    --faiss_index checkpoints/knn.index \
+    --num_keys_to_add_at_a_time 500000 \
+    --starting_point 0
+
+
+python eval_lm.py data-bin/wikitext-103 \
+	--path checkpoints/checkpoint_best.pt \
+    --sample-break-mode complete --max-tokens 3072 \
+    --context-window 2560 --softmax-batch 1024 \
+    --gen-subset valid --dstore-filename checkpoints/dstore \
+    --indexfile checkpoints/knn.index  \
+    --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
+    --k 1024 --lmbda 0.25 --dstore-size 107520 --knn-keytype last_ffn_input \
+    --probe 32 --knnlm  \
+    --output-log-probs-file-prefix debug.valid.probs \
+    --output-tokens-file debug.valid.tokens
+
+    --fp16
+
+python interactive.py data-bin/wikitext-103 \
+	--path checkpoints/checkpoint_best.pt \
+    --dstore-filename checkpoints/dstore \
+    --indexfile checkpoints/knn.index  \
+    --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
+    --k 1024 --lmbda 1.0 --dstore-size 107520 --knn-keytype last_ffn_input \
+    --probe 32 --knnlm \
+    --task language_modeling \
+    --max-len-a 1 --max-len-b 10 \
+    --beam 1 --nbest 1 \
+    --input-tokens-file debug.train.tokens
+
+
+    --sampling --sampling_topk 10
+    --fp16 
+
+

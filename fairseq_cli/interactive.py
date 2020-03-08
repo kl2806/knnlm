@@ -111,7 +111,7 @@ def main(args):
            train_tokens = infile.read().split()
 
         print("TODO, REMOVE ME\n\n\n !!!!Skipping first training tokens...")
-        train_tokens = train_tokens[3072:] # TODO, remove this
+        train_tokens = train_tokens[1536:] # TODO, remove this
 
     if args.buffer_size < 1:
         args.buffer_size = 1
@@ -210,8 +210,9 @@ def main(args):
                                 
                 context_size = 20
                 num_neighbors = 10
-                print("Example:", " ".join(word_tokens))
-                print(dists_full)
+                dists_full = dists_full[0][0]
+                dists_full = dists_full.cpu().detach().numpy()
+                knns_full = knns_full[0][0]
                 best_dist_indices = np.argsort(dists_full)[-num_neighbors:][::-1]
                 for j, neighbor_index in enumerate(best_dist_indices):
                     distance = dists_full[neighbor_index]

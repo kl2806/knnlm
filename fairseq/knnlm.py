@@ -106,7 +106,7 @@ class KNN_Dstore(object):
             tgt = tgt.contiguous().view(-1)
             dists, knns = self.get_knns(queries[tgt != pad_idx])
         else:
-            dists, knns = self.get_knns(queries) # knns is all 2
+            dists, knns = self.get_knns(queries)
 
          
         # (T_reducedxB)xK
@@ -148,11 +148,15 @@ class KNN_Dstore(object):
         dists_full = torch.full((qshape[0]*qshape[1], dists.shape[-1]), 10000.0, dtype=dists.dtype).cuda()
         if tgt is not None:
             dists_full[tgt != pad_idx] = dists 
+        else:
+            dists_full = dists
         
         knns = torch.from_numpy(knns).cuda()
         knns_full = torch.full((qshape[0]*qshape[1], knns.shape[-1]), -1, dtype=knns.dtype).cuda()
         if tgt is not None:
             knns_full[tgt != pad_idx] = knns 
+        else:
+            knns_full = knns
 
         assert dists.size() == knns.size()
 
