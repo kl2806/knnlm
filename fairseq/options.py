@@ -491,7 +491,10 @@ def add_eval_lm_args(parser):
                        help='save keys for the knnlm datastore')
     group.add_argument('--dstore-mmap', default=None, type=str,
                        help='If saving knnlm dstore, save keys and values to this file')
-
+    group.add_argument('--output-log-probs-file-prefix', type=str, default=None,
+                       help='output log probs')
+    group.add_argument('--output-tokens-file', type=str, default=None,
+                       help='output tokens file') 
     # fmt: on
 
 
@@ -570,6 +573,10 @@ def add_generation_args(parser):
                        help='save keys for the knnlm datastore')
     group.add_argument('--dstore-mmap', default=None, type=str,
                        help='If saving knnlm dstore, save keys and values to this file')
+    group.add_argument('--output-log-probs-file-prefix', type=str, default=None,
+                       help='output log probs')
+    group.add_argument('--output-tokens-file', type=str, default=None,
+                       help='output tokens file')
 
     # special decoding format for advanced decoding.
     group.add_argument('--decoding-format', default=None, type=str, choices=['unigram', 'ensemble', 'vote', 'dp', 'bs'])

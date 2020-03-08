@@ -11,6 +11,7 @@ Evaluate the perplexity of a trained language model.
 import logging
 import math
 import os
+import csv
 
 import torch
 import numpy as np
@@ -20,6 +21,8 @@ from fairseq.data import LMContextWindowDataset
 from fairseq.meters import StopwatchMeter, TimeMeter
 from fairseq.sequence_scorer import SequenceScorer
 from fairseq.knnlm import KNN_Dstore
+
+# import spacy; nlp = spacy.load('en_core_web_sm')
 
 
 logging.basicConfig(
@@ -167,6 +170,13 @@ def main(parsed_args):
                 dstore_vals = np.memmap(args.dstore_mmap+'_vals.npy', dtype=np.int, mode='w+', shape=(args.dstore_size, 1))
 
         dstore_idx = 0
+
+        #knn_probs_file = open(args.output_log_probs_file_prefix + '.knn.txt', 'w')
+        #orig_probs_file = open(args.output_log_probs_file_prefix + '.orig.txt', 'w')
+        dists_file = open(args.output_log_probs_file_prefix + '.dists.txt', 'w')
+        knns_file = open(args.output_log_probs_file_prefix + '.knn_indices.txt', 'w')
+        tokens_file = open(args.output_tokens_file, 'w')
+            
         for ex_i, sample in enumerate(t):
             if 'net_input' not in sample:
                 continue
@@ -208,6 +218,30 @@ def main(parsed_args):
                 tokens = hypo['tokens']
                 tgt_len = tokens.numel()
                 pos_scores = hypo['positional_scores'].float()
+                orig_scores = hypo['original_scores'].float()
+                yhat_scores = hypo['yhat_scores'].float()
+                dists_full = hypo['dists_full'].float()
+                knns_full = hypo['knns_full']
+
+                word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
+
+                # knn_probs_file.write('\n'.join([str(prob) for prob in yhat_scores.tolist()]) + '\n')
+                # orig_probs_file.write('\n'.join([str(prob) for prob in orig_scores.tolist()]) + '\n')
+
+                dists_file.write('\n'.join([str(dists_for_token) for dists_for_token in dists_full.tolist()]) + '\n')
+                knns_file.write('\n'.join([str(knns_for_token) for knns_for_token in knns_full.tolist()]) + '\n')
+
+                tokens_file.write('\n'.join(word_tokens) + '\n')
+
+                assert len(yhat_scores.tolist()) == len(word_tokens)
+
+                
+                '''
+                doc = spacy.tokens.doc.Doc(
+                    nlp.vocab, words=word_tokens, spaces=[True for token in tokens])
+                for name, proc in nlp.pipeline:
+                    doc = proc(doc)
+                '''
 
                 if args.add_bos_token:
                     assert hypo['tokens'][0].item() == task.target_dictionary.bos()
@@ -256,12 +290,7 @@ def main(parsed_args):
                             word_stats.setdefault(w, WordStat(w, is_bpe)).add(pos_scores[i].item(), next_prob)
                             is_bpe = False
                             w = ''
-                    if args.output_word_probs:
-                        logger.info(
-                            str(int(sample_id)) + " "
-                            + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob))
-                        )
-
+                    
             wps_meter.update(sample['ntokens'])
             t.log({'wps': round(wps_meter.avg)})
 
@@ -269,6 +298,17 @@ def main(parsed_args):
         print("dstore_idx", dstore_idx, "final shape", shape)
         print("Keys", dstore_keys.shape, dstore_keys.dtype)
         print("Vals", dstore_vals.shape, dstore_vals.dtype)
+    
+    # knn_probs_file.close()
+    # orig_probs_file.close()
+    tokens_file.close()
+
+    # Entities
+    # mask = torch.tensor([1 if token.ent_type_ else 0 for token in doc], dtype=float)
+    # count_entities = mask.sum()
+    # if torch.cuda.is_available() and not parsed_args.cpu:
+    #     mask = mask.cuda()
+    # avg_nll_loss_entities = - (pos_scores * mask).sum() / count_entities.cpu() / math.log(2)
 
     avg_nll_loss = -score_sum / count / math.log(2)  # convert to base 2
     logger.info('Evaluated {} tokens in {:.1f}s ({:.2f} tokens/s)'.format(
@@ -277,6 +317,7 @@ def main(parsed_args):
     logger.info('Loss (base 2): {:.4f}, Perplexity: {:.2f}'.format(
         avg_nll_loss, 2**avg_nll_loss
     ))
+    
 
     if args.output_word_stats:
         for ws in sorted(word_stats.values(), key=lambda x: x.count, reverse=True):

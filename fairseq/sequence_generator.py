@@ -6,6 +6,7 @@
 import math
 
 import torch
+import numpy as np
 
 from fairseq import search, utils
 from fairseq.data import data_utils
@@ -28,6 +29,7 @@ class SequenceGenerator(object):
         match_source_len=False,
         no_repeat_ngram_size=0,
         search_strategy=None,
+        args=None
     ):
         """Generates translations of a given source sentence.
 
@@ -74,6 +76,7 @@ class SequenceGenerator(object):
         self.search = (
             search.BeamSearch(tgt_dict) if search_strategy is None else search_strategy
         )
+        self.args = args
 
 
     @torch.no_grad()
@@ -88,7 +91,7 @@ class SequenceGenerator(object):
             bos_token (int, optional): beginning of sentence token
                 (default: self.eos)
         """
-        model = EnsembleModel(models)
+        model = EnsembleModel(models, self.args)
         return self._generate(model, sample, **kwargs)
 
     @torch.no_grad()
@@ -272,7 +275,7 @@ class SequenceGenerator(object):
                 encoder_outs = model.reorder_encoder_out(encoder_outs, reorder_state)
 
             lprobs, avg_attn_scores = model.forward_decoder(
-                tokens[:, :step + 1], encoder_outs, temperature=self.temperature,
+                tokens[:, :step + 1], encoder_outs, temperature=self.temperature, **kwargs
             )
             lprobs[lprobs != lprobs] = -math.inf
 
@@ -505,12 +508,13 @@ class SequenceGenerator(object):
 class EnsembleModel(torch.nn.Module):
     """A wrapper around an ensemble of models."""
 
-    def __init__(self, models):
+    def __init__(self, models, args=None):
         super().__init__()
         self.models = torch.nn.ModuleList(models)
         self.incremental_states = None
         if all(hasattr(m, 'decoder') and isinstance(m.decoder, FairseqIncrementalDecoder) for m in models):
             self.incremental_states = {m: {} for m in models}
+        self.args=args
 
     def has_encoder(self):
         return hasattr(self.models[0], 'encoder')
@@ -525,7 +529,8 @@ class EnsembleModel(torch.nn.Module):
         return [model.encoder(**encoder_input) for model in self.models]
 
     @torch.no_grad()
-    def forward_decoder(self, tokens, encoder_outs, temperature=1.):
+    def forward_decoder(self, tokens, encoder_outs, temperature=1., **kwargs):
+
         if len(self.models) == 1:
             return self._decode_one(
                 tokens,
@@ -534,6 +539,7 @@ class EnsembleModel(torch.nn.Module):
                 self.incremental_states,
                 log_probs=True,
                 temperature=temperature,
+                **kwargs,
             )
 
         log_probs = []
@@ -560,8 +566,18 @@ class EnsembleModel(torch.nn.Module):
 
     def _decode_one(
         self, tokens, model, encoder_out, incremental_states, log_probs,
-        temperature=1.,
+        temperature=1., **kwargs
     ):
+        def combine_knn_and_vocab_probs(knn_p, vocab_p, coeff):
+            combine_probs = torch.stack([vocab_p, knn_p], dim=0)
+            coeffs = torch.ones_like(combine_probs)
+            coeffs[0] = np.log(1 - coeff)
+            coeffs[1] = np.log(coeff)
+            curr_prob = torch.logsumexp(combine_probs + coeffs, dim=0)
+
+            return curr_prob
+
+        
         if self.incremental_states is not None:
             decoder_out = list(model.forward_decoder(
                 tokens, encoder_out=encoder_out, incremental_state=self.incremental_states[model],
@@ -579,8 +595,29 @@ class EnsembleModel(torch.nn.Module):
         if attn is not None:
             attn = attn[:, -1, :]
         probs = model.get_normalized_probs(decoder_out, log_probs=log_probs)
+
         probs = probs[:, -1, :]
+
+        if 'knn_dstore' in kwargs:
+            dstore = kwargs['knn_dstore']
+            # TxBxC
+            queries = decoder_out[1][self.args.knn_keytype]
+
+            yhat_knn_prob, _,  _ = dstore.get_knn_log_prob(
+                    queries,
+                    None,
+                    pad_idx = -1)  # TODO, what is the pad idx?
+                    #pad_idx=self.pad)
+            if self.args.fp16:
+                yhat_knn_prob = yhat_knn_prob.half()
+                probs = probs.half()
+            yhat_knn_prob = yhat_knn_prob[:, -1, :]
+            probs = combine_knn_and_vocab_probs(
+                        yhat_knn_prob, probs, self.args.lmbda)
+
+
         return probs, attn
+
 
     def reorder_encoder_out(self, encoder_outs, new_order):
         if not self.has_encoder():

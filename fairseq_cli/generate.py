@@ -72,8 +72,9 @@ def _main(args, output_file):
         task=task,
     )
 
+    args.vocab_size = len(tgt_dict)
     for arg in vars(_model_args).keys():
-        if arg in {'decoder_embed_dim', 'vocab_size',}:
+        if arg in {'decoder_embed_dim', 'vocab_size'}:
             setattr(args, arg, getattr(_model_args, arg))
 
     # Optimize ensemble for generation
@@ -149,7 +150,10 @@ def _main(args, output_file):
                 prefix_tokens = sample['target'][:, :args.prefix_size]
 
             gen_timer.start()
-            hypos = task.inference_step(generator, models, sample, prefix_tokens, knn_dstore=knn_dstore)
+            if args.knnlm:
+                hypos = task.inference_step(generator, models, sample, prefix_tokens, knn_dstore=knn_dstore)
+            else:
+                hypos = task.inference_step(generator, models, sample, prefix_tokens)
             num_generated_tokens = sum(len(h[0]['tokens']) for h in hypos)
             gen_timer.stop(num_generated_tokens)
 

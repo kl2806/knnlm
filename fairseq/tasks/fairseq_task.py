@@ -278,6 +278,7 @@ class FairseqTask(object):
             match_source_len=getattr(args, 'match_source_len', False),
             no_repeat_ngram_size=getattr(args, 'no_repeat_ngram_size', 0),
             search_strategy=search_strategy,
+            args=args,
         )
 
     def train_step(self, sample, model, criterion, optimizer, ignore_grad=False):
@@ -313,9 +314,9 @@ class FairseqTask(object):
             loss, sample_size, logging_output = criterion(model, sample)
         return loss, sample_size, logging_output
 
-    def inference_step(self, generator, models, sample, prefix_tokens=None, knn_dstore=None):
+    def inference_step(self, generator, models, sample, prefix_tokens=None, **kwargs):
         with torch.no_grad():
-            return generator.generate(models, sample, prefix_tokens=prefix_tokens, knn_dstore=knn_dstore)
+            return generator.generate(models, sample, prefix_tokens=prefix_tokens, **kwargs)
 
     def begin_epoch(self, epoch, model):
         """Hook function called before the start of each epoch."""

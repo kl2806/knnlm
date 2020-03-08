@@ -16,6 +16,7 @@ class KNN_Dstore(object):
         self.sim_func = args.knn_sim_func
         self.dstore_fp16 = args.dstore_fp16
         self.index = self.setup_faiss(args)
+        self.vocab_size = args.vocab_size
 
 
     def setup_faiss(self, args):
@@ -46,13 +47,13 @@ class KNN_Dstore(object):
 
             if not args.no_load_keys:
                 del self.keys
-                self.keys_from_memmap = np.memmap(args.dstore_filename+'_keys.npy', dtype=np.float32, mode='r', shape=(self.dstore_size, self.dimension))
+                self.keys_from_memmap = np.memmap(args.dstore_filename+'_keys.npy', dtype=np.float16 if args.dstore_fp16 else np.float32, mode='r', shape=(self.dstore_size, self.dimension))
                 self.keys = np.zeros((self.dstore_size, self.dimension), dtype=np.float16 if args.dstore_fp16 else np.float32)
                 self.keys = self.keys_from_memmap[:]
                 self.keys = self.keys.astype(np.float16 if args.dstore_fp16 else np.float32)
 
             del self.vals
-            self.vals_from_memmap = np.memmap(args.dstore_filename+'_vals.npy', dtype=np.int, mode='r', shape=(self.dstore_size, 1))
+            self.vals_from_memmap = np.memmap(args.dstore_filename+'_vals.npy', dtype=np.int16 if args.dstore_fp16 else np.int, mode='r', shape=(self.dstore_size, 1))
             self.vals = np.zeros((self.dstore_size, 1), dtype=np.int16 if args.dstore_fp16 else np.int)
             self.vals = self.vals_from_memmap[:]
             self.vals = self.vals.astype(np.int16 if args.dstore_fp16 else np.int)
@@ -96,23 +97,56 @@ class KNN_Dstore(object):
         # reshape: (TxB)xC
         qshape = queries.shape
         queries = queries.view(-1, qshape[-1])
-        tgt = tgt.contiguous().view(-1)
-        dists, knns = self.get_knns(queries[tgt != pad_idx])
+        if tgt:
+            tgt = tgt.contiguous().view(-1)
+            dists, knns = self.get_knns(queries[tgt != pad_idx])
+        else:
+            dists, knns = self.get_knns(queries) # knns is all 2
+
+         
         # (T_reducedxB)xK
         dists = torch.from_numpy(dists).cuda()
         start = time.time()
-        dists = dist_func(dists, knns, queries[tgt != pad_idx, :], function=self.sim_func)
+        if tgt:
+            dists = dist_func(dists, knns, queries[tgt != pad_idx, :], function=self.sim_func)
+        else:
+            dists = dist_func(dists, knns, queries, function=self.sim_func)
         probs = utils.log_softmax(dists, dim=-1)
+        if tgt:
+            index_mask = torch.eq(torch.from_numpy(self.vals[knns]).long().cuda().squeeze(-1), tgt[tgt != pad_idx].unsqueeze(-1)).float()
+            index_mask[index_mask == 0] = -10000 # for stability
+            index_mask[index_mask == 1] = 0
 
-        index_mask = torch.eq(torch.from_numpy(self.vals[knns]).long().cuda().squeeze(-1), tgt[tgt != pad_idx].unsqueeze(-1)).float()
-        index_mask[index_mask == 0] = -10000 # for stability
-        index_mask[index_mask == 1] = 0
+            # (T_reducedxB)
+            yhat_knn_prob = torch.logsumexp(probs + index_mask, dim=-1).clone()
+            full_yhat_knn_prob = torch.full([qshape[0]*qshape[1]], -10000).cuda()
+            full_yhat_knn_prob[tgt != pad_idx] = yhat_knn_prob
 
-        # (T_reducedxB)
-        yhat_knn_prob = torch.logsumexp(probs + index_mask, dim=-1).clone()
-        full_yhat_knn_prob = torch.full([qshape[0]*qshape[1]], -10000).cuda()
-        full_yhat_knn_prob[tgt != pad_idx] = yhat_knn_prob
+        else:
+            idx = torch.from_numpy(self.vals[knns]).long().cuda().squeeze(-1)
+            idx_unique = idx.unique(sorted=True).cuda()
+            yhat_knn_prob_retrieved_tokens = torch.zeros(len(idx_unique)).cuda()
+            for enumerate_idx, idx_unique_curr in enumerate(idx_unique):
+                yhat_knn_prob_retrieved_tokens[enumerate_idx] = (probs * (idx == idx_unique_curr)).sum()
+
+            # yhat_knn_prob_retrieved_tokens = torch.zeros(len(idx_unique)) #.cuda().scatter_add(0, idx.squeeze(), probs.squeeze()).cuda()
+
+            full_yhat_knn_prob = torch.full((qshape[0]*qshape[1], self.vocab_size), -10000).cuda()
+            full_yhat_knn_prob[:,idx_unique] = yhat_knn_prob_retrieved_tokens
+
+        dists_full = torch.full((qshape[0]*qshape[1], dists.shape[-1]), 10000.0, dtype=dists.dtype).cuda()
+        if tgt:
+            dists_full[tgt != pad_idx] = dists 
+        
+        knns = torch.from_numpy(knns).cuda()
+        knns_full = torch.full((qshape[0]*qshape[1], knns.shape[-1]), -1, dtype=knns.dtype).cuda()
+        if tgt:
+            knns_full[tgt != pad_idx] = knns 
+
+        assert dists.size() == knns.size()
 
         # TxBx1
-        return full_yhat_knn_prob.view(qshape[0], qshape[1], 1)
-
+        if tgt:
+            return full_yhat_knn_prob.view(qshape[0], qshape[1], 1), dists_full.view(qshape[0], qshape[1], -1), knns_full.view(qshape[0], qshape[1], -1)
+        else:
+            return full_yhat_knn_prob.view(qshape[0], qshape[1], self.vocab_size), dists_full.view(qshape[0], qshape[1], -1), knns_full.view(qshape[0], qshape[1], -1)
