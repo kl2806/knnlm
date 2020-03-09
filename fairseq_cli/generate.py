@@ -90,7 +90,6 @@ def _main(args, output_file):
 
     if args.knnlm and args.save_knnlm_dstore:
         raise ValueError("Cannot use knnlm while trying to build the datastore!")
-
     if args.knnlm:
         knn_dstore = KNN_Dstore(args)
 
@@ -136,7 +135,11 @@ def _main(args, output_file):
             dstore_vals = np.memmap(args.dstore_mmap+'_vals.npy', dtype=np.int, mode='w+', shape=(args.dstore_size, 1))
         dstore_idx = 0
     if args.save_knnlm_dstore or args.knnlm:
-        tokens_file = open(args.output_tokens_file_prefix, 'w')
+        source_tokens_file = open(args.output_tokens_file_prefix + '.src' , 'w')
+        target_tokens_file = open(args.output_tokens_file_prefix + '.tgt', 'w')
+
+        # This is only for MT right now, use interactive.py for language modeling
+        assert task != 'language_modeling'
 
     num_sentences = 0
     has_target = True
@@ -179,6 +182,14 @@ def _main(args, output_file):
                         dstore_vals[dstore_idx:shape[0]+dstore_idx] = hypo['tokens'].view(
                            -1, 1).cpu().numpy().astype(np.int)
                     dstore_idx += shape[0]                    
+
+            if args.save_knnlm_dstore or args.knnlm:
+                # dump the tokens to a file, used for analysis and interactive printing
+                source_tokens = [task.source_dictionary[token] for token in hypo['source_tokens']]
+                source_tokens_file.write('\n'.join(source_tokens) + '\n')
+
+                target_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
+                target_tokens_file.write('\n'.join(target_tokens) + '\n')
 
             for i, sample_id in enumerate(sample['id'].tolist()):
                 has_target = sample['target'] is not None
@@ -270,7 +281,11 @@ def _main(args, output_file):
         num_sentences, gen_timer.n, gen_timer.sum, num_sentences / gen_timer.sum, 1. / gen_timer.avg))
     if has_target:
         logger.info('Generate {} with beam={}: {}'.format(args.gen_subset, args.beam, scorer.result_string()))
-    
+
+    if args.save_knnlm_dstore or args.knnlm:
+        source_tokens_file.close()    
+        target_tokens_file.close()    
+
     if args.save_knnlm_dstore:
         print("dstore_idx", dstore_idx, "final shape", shape)
         print("Keys", dstore_keys.shape, dstore_keys.dtype)

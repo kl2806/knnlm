@@ -136,10 +136,12 @@ class SequenceScorer(object):
 
         hypos = []
         start_idxs = sample['start_indices'] if 'start_indices' in sample else [0] * bsz
+        
         for i in range(bsz):
             # remove padding from ref
             ref = utils.strip_pad(sample['target'][i, start_idxs[i]:], self.pad) \
                 if sample['target'] is not None else None
+            src = utils.strip_pad(sample['net_input']['src_tokens'][i,:], self.pad)
             tgt_len = ref.numel()
             avg_probs_i = avg_probs[i][start_idxs[i]:start_idxs[i] + tgt_len]
             orig_probs_i = orig_probs[i][start_idxs[i]:start_idxs[i] + tgt_len]
@@ -172,7 +174,8 @@ class SequenceScorer(object):
             elif self.args.task == 'language_modeling':
                 dstore_keys = decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:]
             hypos.append([{
-                'tokens': ref,
+                'source_tokens': src,
+                'tokens': ref, # This is the target sequence
                 'score': score_i,
                 'attention': avg_attn_i,
                 'alignment': alignment,

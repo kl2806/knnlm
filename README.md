@@ -123,7 +123,7 @@ python generate.py data-bin/iwslt14.tokenized.de-en \
     --batch-size 128 --beam 5 --remove-bpe \
     --gen-subset valid    
 ```
-You should get a BLEU score near 33-34 for a well-trained transformer model.
+You should get a validation BLEU score near 34-35 for a well-trained transformer model.
 
 ### Saving the keys and values for the datastore
 
@@ -141,7 +141,7 @@ python eval_lm.py data-bin/wikitext-103 \
     --dstore-mmap lm-checkpoints/dstore --knn-keytype 'last_ffn_input' \
     --dstore-size 103225485 --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
     --save-knnlm-dstore --fp16 \
-    --output-tokens-file wiki.train.tokens
+    --output-tokens-file-prefix wiki.train.tokens
 ```
 
 For machine translation on IWSLT:
@@ -150,13 +150,13 @@ python generate.py data-bin/iwslt14.tokenized.de-en  \
     --path mt-checkpoints/checkpoint_best.pt \
     --gen-subset train --batch-size 128 \
     --dstore-mmap mt-checkpoints/dstore --knn-keytype 'last_ffn_input' \
-    --dstore-size TODO --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
+    --dstore-size 3949114 --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
     --score-reference --quiet \
-    --save-knnlm-dstore --fp16 \    
-    --output-tokens-file iwslt.train.tokens
+    --save-knnlm-dstore --fp16 \
+    --output-tokens-file-prefix iwslt.train.tokens
 ```
 
-The total number of tokens in the Wikitext-103 training set is `103227021`. The total number of tokens in the IWSLT training set is `TODO`. The dstore size for Wikitext-103 `103225485` is `1536` tokens less than the total because we want each key to be constructed using a minimum amount of prior context. 
+The total number of tokens in the Wikitext-103 training set is `103227021`. The total number of tokens in the IWSLT training set is `3949114`. The dstore size for Wikitext-103 `103225485` is `1536` tokens less than the total because we want each key to be constructed using a minimum amount of prior context. 
 
 The tokens for the entire training set will be dumped into `wiki.train.tokens` or `iwslt.train.tokens`. These tokens used for printing out the retrieved training tokens in later commands.
 
@@ -185,7 +185,7 @@ For machine translation on IWSLT:
 ```bash
 python build_dstore.py \
     --dstore_mmap mt-checkpoints/dstore \
-    --dstore_size TODO \
+    --dstore_size 3949114 \
     --faiss_index mt-checkpoints/knn.index \
     --num_keys_to_add_at_a_time 500000 \
     --dimension 512 \
@@ -222,11 +222,9 @@ python generate.py data-bin/iwslt14.tokenized.de-en \
     --dstore-filename mt-checkpoints/dstore \
     --indexfile mt-checkpoints/knn.index  \
     --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
-    --k 1024 --lmbda 0.25 --dstore-size TODO --knn-keytype last_ffn_input \
+    --k 1024 --lmbda 0.25 --dstore-size 3949114 --knn-keytype last_ffn_input \
     --probe 32 --knnlm --fp16
 ```
-
-TODO, make beam search and batched mode work.
 
 If your hardware constraints make this too slow, you can run it without using full precision keys by adding two flags: `--no-load-keys` and `--knn-sim-func "do_not_recomp_l2"`. This uses the quantized versions of keys stored within the FAISS index. You can make things faster by reducing the value of the `probe` (the number of clusters FAISS checks for neighbors) at the cost of performance. You can also try reducing the number of neighbors `k`.
 
