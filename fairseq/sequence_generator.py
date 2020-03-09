@@ -615,6 +615,7 @@ class EnsembleModel(torch.nn.Module):
             if self.args.fp16:
                 yhat_knn_prob = yhat_knn_prob.half()
                 probs = probs.half()
+            yhat_knn_prob = yhat_knn_prob.permute(1, 0, 2)
             yhat_knn_prob = yhat_knn_prob[:, -1, :]
             probs = combine_knn_and_vocab_probs(
                         yhat_knn_prob, probs, self.args.lmbda)
