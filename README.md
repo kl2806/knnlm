@@ -20,6 +20,8 @@ Before starting, make sure you install Fairseq (after pulling the code, from the
 pip install --editable .
 
 pip install faiss
+
+pip install sacremoses
 ```
 
 ### A Note about Hardware
