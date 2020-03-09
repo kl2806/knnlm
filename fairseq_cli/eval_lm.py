@@ -11,6 +11,7 @@ Evaluate the perplexity of a trained language model.
 import logging
 import math
 import os
+import csv
 
 import torch
 import numpy as np
@@ -20,6 +21,8 @@ from fairseq.data import LMContextWindowDataset
 from fairseq.meters import StopwatchMeter, TimeMeter
 from fairseq.sequence_scorer import SequenceScorer
 from fairseq.knnlm import KNN_Dstore
+
+# import spacy; nlp = spacy.load('en_core_web_sm')
 
 
 logging.basicConfig(
@@ -165,8 +168,17 @@ def main(parsed_args):
                 print('Saving fp32')
                 dstore_keys = np.memmap(args.dstore_mmap+'_keys.npy', dtype=np.float32, mode='w+', shape=(args.dstore_size, args.decoder_embed_dim))
                 dstore_vals = np.memmap(args.dstore_mmap+'_vals.npy', dtype=np.int, mode='w+', shape=(args.dstore_size, 1))
-
-        dstore_idx = 0
+            dstore_idx = 0
+        
+        # dump information into relevant files for later analysis
+        if args.knnlm:
+            knn_probs_file = open(args.output_probs_file_prefix + '.knn.probs.txt', 'w')
+            orig_probs_file = open(args.output_probs_file_prefix + '.orig.probs.txt', 'w')
+            dists_file = open(args.output_probs_file_prefix + '.knn.dists.txt', 'w')
+            knns_file = open(args.output_probs_file_prefix + '.knn.indices.txt', 'w')
+        if args.save_knnlm_dstore or args.knnlm:
+            tokens_file = open(args.output_tokens_file_prefix, 'w')
+            
         for ex_i, sample in enumerate(t):
             if 'net_input' not in sample:
                 continue
@@ -181,7 +193,10 @@ def main(parsed_args):
             gen_timer.stop(sample['ntokens'])
 
             for i, hypos_i in enumerate(hypos):
+                if i == len(hypos) - 1:
+                    continue
                 hypo = hypos_i[0]
+                skipped = False
                 if args.save_knnlm_dstore:
                     shape = hypo['dstore_keys'].shape
                     if shape[0] == args.tokens_per_sample:
@@ -201,13 +216,33 @@ def main(parsed_args):
 
                         dstore_idx += shape[0]
                     else:
+                        skipped = True
                         print('Skipping this one with shape', shape)
-
+                                
                 sample_id = sample['id'][i]
 
                 tokens = hypo['tokens']
                 tgt_len = tokens.numel()
                 pos_scores = hypo['positional_scores'].float()
+                orig_scores = hypo['original_scores'].float()
+                yhat_scores = hypo['yhat_scores'].float()
+                if args.knnlm: # if evaluating with KNNLM, dump the probs to a file
+                    assert hypo['dists_full'] != None
+                    dists_full = hypo['dists_full'].float()
+                    knns_full = hypo['knns_full']
+                                        
+                    knn_probs_file.write('\n'.join([str(prob) for prob in yhat_scores.tolist()]) + '\n')
+                    orig_probs_file.write('\n'.join([str(prob) for prob in orig_scores.tolist()]) + '\n')
+                    dists_file.write('\n'.join([str(dists_for_token) for dists_for_token in dists_full.tolist()]) + '\n')
+                    knns_file.write('\n'.join([str(knns_for_token) for knns_for_token in knns_full.tolist()]) + '\n')
+
+                if args.save_knnlm_dstore or args.knnlm:
+                    # if we didn't skip inserting the current token into the datastore (if during evaluation, none are skipped)
+                    if not skipped: 
+                        # dump the tokens to a file, used for analysis and interactive printing
+                        word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
+                        tokens_file.write('\n'.join(word_tokens) + '\n')
+                        assert len(hypo['yhat_scores'].float().tolist()) == len(word_tokens)
 
                 if args.add_bos_token:
                     assert hypo['tokens'][0].item() == task.target_dictionary.bos()
@@ -256,12 +291,7 @@ def main(parsed_args):
                             word_stats.setdefault(w, WordStat(w, is_bpe)).add(pos_scores[i].item(), next_prob)
                             is_bpe = False
                             w = ''
-                    if args.output_word_probs:
-                        logger.info(
-                            str(int(sample_id)) + " "
-                            + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob))
-                        )
-
+                    
             wps_meter.update(sample['ntokens'])
             t.log({'wps': round(wps_meter.avg)})
 
@@ -269,6 +299,17 @@ def main(parsed_args):
         print("dstore_idx", dstore_idx, "final shape", shape)
         print("Keys", dstore_keys.shape, dstore_keys.dtype)
         print("Vals", dstore_vals.shape, dstore_vals.dtype)
+    
+    # knn_probs_file.close()
+    # orig_probs_file.close()
+    tokens_file.close()
+
+    # Entities
+    # mask = torch.tensor([1 if token.ent_type_ else 0 for token in doc], dtype=float)
+    # count_entities = mask.sum()
+    # if torch.cuda.is_available() and not parsed_args.cpu:
+    #     mask = mask.cuda()
+    # avg_nll_loss_entities = - (pos_scores * mask).sum() / count_entities.cpu() / math.log(2)
 
     avg_nll_loss = -score_sum / count / math.log(2)  # convert to base 2
     logger.info('Evaluated {} tokens in {:.1f}s ({:.2f} tokens/s)'.format(
@@ -277,6 +318,7 @@ def main(parsed_args):
     logger.info('Loss (base 2): {:.4f}, Perplexity: {:.2f}'.format(
         avg_nll_loss, 2**avg_nll_loss
     ))
+    
 
     if args.output_word_stats:
         for ws in sorted(word_stats.values(), key=lambda x: x.count, reverse=True):
@@ -291,3 +333,4 @@ def cli_main():
 
 if __name__ == '__main__':
     cli_main()
+

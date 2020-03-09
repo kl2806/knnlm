@@ -13,11 +13,13 @@ import logging
 import math
 import sys
 import os
+import numpy as np
 
 import torch
 
 from fairseq import checkpoint_utils, options, tasks, utils
 from fairseq.data import encoders
+from fairseq.knnlm import KNN_Dstore
 
 
 logging.basicConfig(
@@ -71,18 +73,12 @@ def make_batches(lines, args, task, max_positions, encode_fn):
 def main(args):
     utils.import_user_module(args)
 
-    if args.buffer_size < 1:
-        args.buffer_size = 1
-    if args.max_tokens is None and args.max_sentences is None:
-        args.max_sentences = 1
-
     assert not args.sampling or args.nbest == args.beam, \
         '--sampling requires --nbest to be equal to --beam'
     assert not args.max_sentences or args.max_sentences <= args.buffer_size, \
         '--max-sentences/--batch-size cannot be larger than --buffer-size'
 
     logger.info(args)
-
     use_cuda = torch.cuda.is_available() and not args.cpu
 
     # Setup task, e.g., translation
@@ -95,6 +91,33 @@ def main(args):
         arg_overrides=eval(args.model_overrides),
         task=task,
     )
+
+    for arg in vars(_model_args).keys():
+        '''if arg not in {
+            'self_target', 'future_target', 'past_target', 'tokens_per_sample',
+            'output_size_dictionary', 'add_bos_token',
+        }:'''
+        if arg in {
+            'decoder_embed_dim', 'vocab_size'
+        }:
+            setattr(args, arg, getattr(_model_args, arg))
+
+    logger.info(args)
+    
+    if args.knnlm:
+        knn_dstore = KNN_Dstore(args)        
+        print("Loading training tokens...")
+        with open(args.input_tokens_file) as infile:
+           train_tokens = infile.read().split()
+
+        print("TODO, REMOVE ME\n\n\n !!!!Skipping first training tokens...")
+        train_tokens = train_tokens[1536:] # TODO, remove this
+
+    if args.buffer_size < 1:
+        args.buffer_size = 1
+    if args.max_tokens is None and args.max_sentences is None:
+        args.max_sentences = 1
+
 
     # Set dictionaries
     src_dict = task.source_dictionary
@@ -161,7 +184,10 @@ def main(args):
                     'src_lengths': src_lengths,
                 },
             }
-            translations = task.inference_step(generator, models, sample)
+            if args.knnlm:
+                translations = task.inference_step(generator, models, sample, None, knn_dstore=knn_dstore)
+            else:
+                translations = task.inference_step(generator, models, sample, None)
             for i, (id, hypos) in enumerate(zip(batch.ids.tolist(), translations)):
                 src_tokens_i = utils.strip_pad(src_tokens[i], tgt_dict.pad())
                 results.append((start_id + id, src_tokens_i, hypos))
@@ -173,7 +199,7 @@ def main(args):
                 print('S-{}\t{}'.format(id, src_str))
 
             # Process top predictions
-            for hypo in hypos[:min(len(hypos), args.nbest)]:
+            for hypo in hypos[:min(len(hypos), args.nbest)]:                
                 hypo_tokens, hypo_str, alignment = utils.post_process_prediction(
                     hypo_tokens=hypo['tokens'].int().cpu(),
                     src_str=src_str,
@@ -200,6 +226,26 @@ def main(args):
                         alignment_str
                     ))
 
+                assert hypo['dists_full'] != None
+                dists_full = hypo['dists_full'].float()
+                knns_full = hypo['knns_full']
+                word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
+                #assert len(yhat_scores.tolist()) == len(word_tokens)
+
+                # TODO, trim off padding when its batched
+
+                context_size = 20
+                num_neighbors = 10
+                dists_full = dists_full[0][0]
+                dists_full = dists_full.cpu().detach().numpy()
+                knns_full = knns_full[0][0]
+                best_dist_indices = np.argsort(dists_full)[-num_neighbors:][::-1]
+                for j, neighbor_index in enumerate(best_dist_indices):
+                    distance = dists_full[neighbor_index]
+                    knn_index = knns_full[neighbor_index]
+                    print("Best neighbor {} (distance {:.2f}):".format(j, distance), " ".join(train_tokens[knn_index - context_size:knn_index]), "[[", train_tokens[knn_index], "]]")
+
+
         # update running id counter
         start_id += len(inputs)
 
@@ -212,3 +258,4 @@ def cli_main():
 
 if __name__ == '__main__':
     cli_main()
+

@@ -53,6 +53,7 @@ class SequenceScorer(object):
         def combine_knn_and_vocab_probs(knn_p, vocab_p, coeff):
             combine_probs = torch.stack([vocab_p, knn_p], dim=0)
             coeffs = torch.ones_like(combine_probs)
+            assert coeff != 1.0 # have to mix when using parametric + non-parametric
             coeffs[0] = np.log(1 - coeff)
             coeffs[1] = np.log(coeff)
             curr_prob = torch.logsumexp(combine_probs + coeffs, dim=0)
@@ -88,7 +89,7 @@ class SequenceScorer(object):
                     probs[idx:end] = tgt_probs.view(-1)
                     idx = end
                 sample['target'] = orig_target
-
+            
             probs = probs.view(sample['target'].shape)
 
             if 'knn_dstore' in kwargs:
@@ -98,15 +99,18 @@ class SequenceScorer(object):
                 if len(models) != 1:
                     raise ValueError('Only knn *log* probs are supported.')
 
-                yhat_knn_prob = dstore.get_knn_log_prob(
+                yhat_knn_prob, dists_full, knns_full = dstore.get_knn_log_prob(
                         queries,
                         orig_target.permute(1, 0),
                         pad_idx=self.pad)
                 yhat_knn_prob = yhat_knn_prob.permute(1, 0, 2).squeeze(-1)
+                dists_full = dists_full.permute(1, 0, 2).squeeze(-1)
+                knns_full = knns_full.permute(1, 0, 2).squeeze(-1)
+
                 if self.args.fp16:
                     yhat_knn_prob = yhat_knn_prob.half()
                     probs = probs.half()
-
+                orig_probs = probs
                 probs = combine_knn_and_vocab_probs(
                             yhat_knn_prob, probs, self.args.lmbda)
 
@@ -126,7 +130,10 @@ class SequenceScorer(object):
             if avg_attn is not None:
                 avg_attn.div_(len(models))
 
-        bsz = avg_probs.size(0)
+        # bsz = avg_probs.size(0*)
+        bsz = sample['target'].shape[0]
+        orig_probs = yhat_knn_prob = avg_probs = torch.zeros(*sample['target'].shape)
+
         hypos = []
         start_idxs = sample['start_indices'] if 'start_indices' in sample else [0] * bsz
         for i in range(bsz):
@@ -135,6 +142,14 @@ class SequenceScorer(object):
                 if sample['target'] is not None else None
             tgt_len = ref.numel()
             avg_probs_i = avg_probs[i][start_idxs[i]:start_idxs[i] + tgt_len]
+            orig_probs_i = orig_probs[i][start_idxs[i]:start_idxs[i] + tgt_len]
+            yhat_knn_prob_i = yhat_knn_prob[i][start_idxs[i]:start_idxs[i] + tgt_len]
+            if 'knn_dstore' in kwargs:
+                dists_full_i = dists_full[i][start_idxs[i]:start_idxs[i] + tgt_len]
+                knns_full_i = knns_full[i][start_idxs[i]:start_idxs[i] + tgt_len]
+            else:
+                dists_full_i = None
+                knns_full_i = None
             score_i = avg_probs_i.sum() / tgt_len
             if avg_attn is not None:
                 avg_attn_i = avg_attn[i]
@@ -150,12 +165,22 @@ class SequenceScorer(object):
                     alignment = None
             else:
                 avg_attn_i = alignment = None
+            if not self.args.save_knnlm_dstore:
+                dstore_keys = None
+            elif self.args.task == 'translation': # TODO, it seems like you need to trim some padding for MT
+                dstore_keys = decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:][0:tgt_len]
+            elif self.args.task == 'language_modeling':
+                dstore_keys = decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:]
             hypos.append([{
                 'tokens': ref,
                 'score': score_i,
                 'attention': avg_attn_i,
                 'alignment': alignment,
                 'positional_scores': avg_probs_i,
-                'dstore_keys': decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:] if self.args.save_knnlm_dstore else None,
+                'original_scores': orig_probs_i,
+                'yhat_scores': yhat_knn_prob_i,
+                'dists_full': dists_full_i,
+                'knns_full': knns_full_i,
+                'dstore_keys': dstore_keys, 
             }])
         return hypos

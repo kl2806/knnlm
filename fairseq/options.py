@@ -465,7 +465,7 @@ def add_common_eval_args(group):
                        help='a dictionary used to override model args at generation '
                             'that were used during model training')
     group.add_argument('--results-path', metavar='RESDIR', type=str, default=None,
-                       help='path to save eval results (optional)"')
+                       help='path to save eval results (optional)"')    
     # fmt: on
 
 
@@ -486,11 +486,15 @@ def add_eval_lm_args(parser):
     group.add_argument('--lm-eval', default=True, action='store_true',
                        help='helpful for certain ops that are only used during eval')
     group.add_argument('--knnlm', action='store_true',
-                       help='use the k-nearest neighbors language model')
+                       help='use the k-nearest neighbors model')
     group.add_argument('--save-knnlm-dstore', action='store_true',
                        help='save keys for the knnlm datastore')
     group.add_argument('--dstore-mmap', default=None, type=str,
                        help='If saving knnlm dstore, save keys and values to this file')
+    group.add_argument('--output-probs-file-prefix', type=str, default=None,
+                       help='output log probs')
+    group.add_argument('--output-tokens-file-prefix', type=str, default=None,
+                       help='output tokens file') 
     # fmt: on
 
 
@@ -563,6 +567,16 @@ def add_generation_args(parser):
                        help='if set, the last checkpoint are assumed to be a reranker to rescore the translations'),
     group.add_argument('--retain-iter-history', action='store_true',
                        help='if set, decoding returns the whole history of iterative refinement')
+    group.add_argument('--knnlm', action='store_true',
+                       help='use the k-nearest neighbors model')
+    group.add_argument('--save-knnlm-dstore', action='store_true',
+                       help='save keys for the knnlm datastore')
+    group.add_argument('--dstore-mmap', default=None, type=str,
+                       help='If saving knnlm dstore, save keys and values to this file')
+    group.add_argument('--output-probs-file-prefix', type=str, default=None,
+                       help='output log probs')
+    group.add_argument('--output-tokens-file-prefix', type=str, default=None,
+                       help='output tokens file')    
 
     # special decoding format for advanced decoding.
     group.add_argument('--decoding-format', default=None, type=str, choices=['unigram', 'ensemble', 'vote', 'dp', 'bs'])
@@ -577,6 +591,8 @@ def add_interactive_args(parser):
                        help='read this many sentences into a buffer before processing them')
     group.add_argument('--input', default='-', type=str, metavar='FILE',
                        help='file to read from; use - for stdin')
+    group.add_argument('--input-tokens-file', type=str, default=None,
+                       help='input tokens file') 
     # fmt: on
 
 
@@ -597,3 +613,4 @@ def add_model_args(parser):
                        help='Model Architecture')
     # fmt: on
     return group
+
