@@ -200,26 +200,6 @@ def main(args):
 
             # Process top predictions
             for hypo in hypos[:min(len(hypos), args.nbest)]:                
-                assert hypo['dists_full'] != None
-                dists_full = hypo['dists_full'].float()
-                knns_full = hypo['knns_full']
-                word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
-                #assert len(yhat_scores.tolist()) == len(word_tokens)
-
-                # TODO, trim off padding when its batched
-                                
-                context_size = 20
-                num_neighbors = 10
-                dists_full = dists_full[0][0]
-                dists_full = dists_full.cpu().detach().numpy()
-                knns_full = knns_full[0][0]
-                best_dist_indices = np.argsort(dists_full)[-num_neighbors:][::-1]
-                for j, neighbor_index in enumerate(best_dist_indices):
-                    distance = dists_full[neighbor_index]
-                    knn_index = knns_full[neighbor_index]
-                    print("Best neighbor {} (distance {:.2f}):".format(j, distance), " ".join(train_tokens[knn_index - context_size:knn_index]), "[[", train_tokens[knn_index], "]]")
-
-
                 hypo_tokens, hypo_str, alignment = utils.post_process_prediction(
                     hypo_tokens=hypo['tokens'].int().cpu(),
                     src_str=src_str,
@@ -245,6 +225,26 @@ def main(args):
                         id,
                         alignment_str
                     ))
+
+                assert hypo['dists_full'] != None
+                dists_full = hypo['dists_full'].float()
+                knns_full = hypo['knns_full']
+                word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
+                #assert len(yhat_scores.tolist()) == len(word_tokens)
+
+                # TODO, trim off padding when its batched
+
+                context_size = 20
+                num_neighbors = 10
+                dists_full = dists_full[0][0]
+                dists_full = dists_full.cpu().detach().numpy()
+                knns_full = knns_full[0][0]
+                best_dist_indices = np.argsort(dists_full)[-num_neighbors:][::-1]
+                for j, neighbor_index in enumerate(best_dist_indices):
+                    distance = dists_full[neighbor_index]
+                    knn_index = knns_full[neighbor_index]
+                    print("Best neighbor {} (distance {:.2f}):".format(j, distance), " ".join(train_tokens[knn_index - context_size:knn_index]), "[[", train_tokens[knn_index], "]]")
+
 
         # update running id counter
         start_id += len(inputs)
