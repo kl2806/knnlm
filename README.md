@@ -63,7 +63,7 @@ wget https://nlp.stanford.edu/projects/knnlm/wt103_checkpoint_best.pt
 mv wt103_checkpoint_best.pt lm-checkpoints/checkpoint_best.pt
 ```
 
-A checkpoint for machine translation that gets 33.15 BLEU is [here](https://drive.google.com/file/d/1GySMVIpOH4GkmPfQhOF8lC_t-gghCHIW/view?usp=sharing), which can be downloaded using the following command (got the command from [this website](https://gdrive-wget.glitch.me/)):
+A checkpoint for machine translation that gets 34.94 BLEU on the validation set is [here](https://drive.google.com/file/d/1GySMVIpOH4GkmPfQhOF8lC_t-gghCHIW/view?usp=sharing), which can be downloaded using the following command (got the command from [this website](https://gdrive-wget.glitch.me/)):
 ```bash
 mkdir -p mt-checkpoints
 wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1GySMVIpOH4GkmPfQhOF8lC_t-gghCHIW' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1GySMVIpOH4GkmPfQhOF8lC_t-gghCHIW" -O mt-checkpoints/checkpoint_best.pt && rm -rf /tmp/cookies.txt
