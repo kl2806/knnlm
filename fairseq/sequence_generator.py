@@ -574,8 +574,11 @@ class EnsembleModel(torch.nn.Module):
             combine_probs = torch.stack([vocab_p, knn_p], dim=0)
             coeffs = torch.ones_like(combine_probs)
             if coeff == 1.0: # special case where we do only non-parametric
-                coeffs[0] = -10000
+                coeffs[0] = -10000.0
                 coeffs[1] = 0.0
+            elif coeff == 0.0: # special case where we do only parametric
+                coeffs[0] = 0.0
+                coeffs[1] = -10000.0
             else:
                 coeffs[0] = np.log(1 - coeff)
                 coeffs[1] = np.log(coeff)

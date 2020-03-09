@@ -168,16 +168,16 @@ def main(parsed_args):
                 print('Saving fp32')
                 dstore_keys = np.memmap(args.dstore_mmap+'_keys.npy', dtype=np.float32, mode='w+', shape=(args.dstore_size, args.decoder_embed_dim))
                 dstore_vals = np.memmap(args.dstore_mmap+'_vals.npy', dtype=np.int, mode='w+', shape=(args.dstore_size, 1))
-
-        dstore_idx = 0
-
-        #knn_probs_file = open(args.output_log_probs_file_prefix + '.knn.txt', 'w')
-        #orig_probs_file = open(args.output_log_probs_file_prefix + '.orig.txt', 'w')
+            dstore_idx = 0
+        
+        # dump information into relevant files for later analysis
         if args.knnlm:
-            dists_file = open(args.output_log_probs_file_prefix + '.dists.txt', 'w')
-            knns_file = open(args.output_log_probs_file_prefix + '.knn_indices.txt', 'w')
+            knn_probs_file = open(args.output_probs_file_prefix + '.knn.probs.txt', 'w')
+            orig_probs_file = open(args.output_probs_file_prefix + '.orig.probs.txt', 'w')
+            dists_file = open(args.output_probs_file_prefix + '.knn.dists.txt', 'w')
+            knns_file = open(args.output_probs_file_prefix + '.knn.indices.txt', 'w')
         if args.save_knnlm_dstore or args.knnlm:
-            tokens_file = open(args.output_tokens_file, 'w')
+            tokens_file = open(args.output_tokens_file_prefix, 'w')
             
         for ex_i, sample in enumerate(t):
             if 'net_input' not in sample:
@@ -226,28 +226,23 @@ def main(parsed_args):
                 pos_scores = hypo['positional_scores'].float()
                 orig_scores = hypo['original_scores'].float()
                 yhat_scores = hypo['yhat_scores'].float()
-                if args.knnlm:
+                if args.knnlm: # if evaluating with KNNLM, dump the probs to a file
                     assert hypo['dists_full'] != None
                     dists_full = hypo['dists_full'].float()
                     knns_full = hypo['knns_full']
                                         
-                    # knn_probs_file.write('\n'.join([str(prob) for prob in yhat_scores.tolist()]) + '\n')
-                    # orig_probs_file.write('\n'.join([str(prob) for prob in orig_scores.tolist()]) + '\n')
+                    knn_probs_file.write('\n'.join([str(prob) for prob in yhat_scores.tolist()]) + '\n')
+                    orig_probs_file.write('\n'.join([str(prob) for prob in orig_scores.tolist()]) + '\n')
                     dists_file.write('\n'.join([str(dists_for_token) for dists_for_token in dists_full.tolist()]) + '\n')
                     knns_file.write('\n'.join([str(knns_for_token) for knns_for_token in knns_full.tolist()]) + '\n')
 
                 if args.save_knnlm_dstore or args.knnlm:
-                    if not skipped:
-                        word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]                
+                    # if we didn't skip inserting the current token into the datastore (if during evaluation, none are skipped)
+                    if not skipped: 
+                        # dump the tokens to a file, used for analysis and interactive printing
+                        word_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
                         tokens_file.write('\n'.join(word_tokens) + '\n')
                         assert len(hypo['yhat_scores'].float().tolist()) == len(word_tokens)
-
-                '''
-                doc = spacy.tokens.doc.Doc(
-                    nlp.vocab, words=word_tokens, spaces=[True for token in tokens])
-                for name, proc in nlp.pipeline:
-                    doc = proc(doc)
-                '''
 
                 if args.add_bos_token:
                     assert hypo['tokens'][0].item() == task.target_dictionary.bos()

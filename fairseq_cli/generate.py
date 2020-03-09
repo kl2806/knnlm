@@ -134,7 +134,9 @@ def _main(args, output_file):
             print('Saving fp32')
             dstore_keys = np.memmap(args.dstore_mmap+'_keys.npy', dtype=np.float32, mode='w+', shape=(args.dstore_size, args.decoder_embed_dim))
             dstore_vals = np.memmap(args.dstore_mmap+'_vals.npy', dtype=np.int, mode='w+', shape=(args.dstore_size, 1))
-    dstore_idx = 0
+        dstore_idx = 0
+    if args.save_knnlm_dstore or args.knnlm:
+        tokens_file = open(args.output_tokens_file_prefix, 'w')
 
     num_sentences = 0
     has_target = True
@@ -158,7 +160,7 @@ def _main(args, output_file):
             gen_timer.stop(num_generated_tokens)
 
             if args.save_knnlm_dstore:
-                for i, hypos_i in enumerate(hypos):
+                for i, hypos_i in enumerate(hypos):                    
                     hypo = hypos_i[0]
                     shape = hypo['dstore_keys'].shape                    
                     if dstore_idx + shape[0] > args.dstore_size:
