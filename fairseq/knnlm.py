@@ -163,3 +163,4 @@ class KNN_Dstore(object):
             return full_yhat_knn_prob.view(qshape[0], qshape[1], 1), dists_full.view(qshape[0], qshape[1], -1), knns_full.view(qshape[0], qshape[1], -1)
         else:        
             return full_yhat_knn_prob.view(qshape[0], qshape[1], self.vocab_size), dists_full.view(qshape[0], qshape[1], -1), knns_full.view(qshape[0], qshape[1], -1)
+
