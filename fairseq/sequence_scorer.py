@@ -130,10 +130,7 @@ class SequenceScorer(object):
             if avg_attn is not None:
                 avg_attn.div_(len(models))
 
-        # bsz = avg_probs.size(0*)
-        bsz = sample['target'].shape[0]
-        orig_probs = yhat_knn_prob = avg_probs = torch.zeros(*sample['target'].shape)
-
+        bsz = avg_probs.size(0)
         hypos = []
         start_idxs = sample['start_indices'] if 'start_indices' in sample else [0] * bsz
         
@@ -170,7 +167,7 @@ class SequenceScorer(object):
             if not self.args.save_knnlm_dstore:
                 dstore_keys = None
             elif self.args.task == 'translation': # TODO, it seems like you need to trim some padding for MT
-                dstore_keys = decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:][0:tgt_len]
+                dstore_keys = decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:][0:tgt_len]        
             elif self.args.task == 'language_modeling':
                 dstore_keys = decoder_out[1][self.args.knn_keytype][start_idxs[i]:,i,:]
             hypos.append([{

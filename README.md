@@ -208,7 +208,7 @@ python eval_lm.py data-bin/wikitext-103 \
     --k 1024 --lmbda 0.25 --dstore-size 103225485 --knn-keytype last_ffn_input \
     --probe 32 --knnlm --fp16 \
     --output-probs-file-prefix wiki.valid \
-    --output-tokens-file wiki.valid
+    --output-tokens-file-prefix wiki.valid
 ```
 
 To evaluate the KNN MT on the IWSLT validation set:
@@ -223,7 +223,7 @@ python generate.py data-bin/iwslt14.tokenized.de-en \
     --indexfile mt-checkpoints/knn.index  \
     --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
     --k 1024 --lmbda 0.25 --dstore-size 3949114 --knn-keytype last_ffn_input \
-    --probe 32 --knnlm --fp16
+    --probe 32 --knnlm --fp16 --output-tokens-file-prefix iwslt.valid
 ```
 
 If your hardware constraints make this too slow, you can run it without using full precision keys by adding two flags: `--no-load-keys` and `--knn-sim-func "do_not_recomp_l2"`. This uses the quantized versions of keys stored within the FAISS index. You can make things faster by reducing the value of the `probe` (the number of clusters FAISS checks for neighbors) at the cost of performance. You can also try reducing the number of neighbors `k`.

@@ -127,16 +127,17 @@ class KNN_Dstore(object):
             full_yhat_knn_prob = torch.full([qshape[0]*qshape[1]], -10000).cuda()
             full_yhat_knn_prob[tgt != pad_idx] = yhat_knn_prob
 	   
-        else:                        
-            batched_full_yhat_knn_prob = None                        
+        else:
+            batched_full_yhat_knn_prob = None
             for i, idx in enumerate(torch.from_numpy(self.vals[knns]).long().cuda().squeeze(-1)):
                 idx_unique = idx.unique(sorted=True).cuda()            
                 yhat_knn_prob_retrieved_tokens = torch.zeros(len(idx_unique)).cuda()
-                for enumerate_idx, idx_unique_curr in enumerate(idx_unique):                                        
-                    yhat_knn_prob_retrieved_tokens[enumerate_idx] = torch.sum((probs[i] * (idx == idx_unique_curr)), dim=-1).clone()
+
+                for enumerate_idx, idx_unique_curr in enumerate(idx_unique): 
+                    yhat_knn_prob_retrieved_tokens[enumerate_idx] = torch.sum((probs[i] * (idx == idx_unique_curr)), dim=-1)
 
                 full_yhat_knn_prob = torch.full((1, self.vocab_size), -10000).cuda()
-                full_yhat_knn_prob[:,idx_unique] = torch.log(yhat_knn_prob_retrieved_tokens)                
+                full_yhat_knn_prob[:,idx_unique] = torch.log(yhat_knn_prob_retrieved_tokens)
                 if batched_full_yhat_knn_prob is None:
                     batched_full_yhat_knn_prob = full_yhat_knn_prob
                 else:

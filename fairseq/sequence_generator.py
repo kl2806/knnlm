@@ -144,6 +144,7 @@ class SequenceGenerator(object):
         tokens_buf = tokens.clone()
         tokens[:, 0] = self.eos if bos_token is None else bos_token
         attn, attn_buf = None, None
+        knns, dists = None, None
 
         # The blacklist indicates candidates that should be ignored.
         # For example, suppose we're sampling and have already finalized 2/5
@@ -205,6 +206,8 @@ class SequenceGenerator(object):
             tokens_clone = tokens_clone[:, 1:step + 2]  # skip the first index, which is EOS
             assert not tokens_clone.eq(self.eos).any()
             tokens_clone[:, step] = self.eos
+            knns_clone = knns.index_select(0, bbsz_idx)[:, :, 1:step+2] if knns is not None else None
+            dists_clone = dists.index_select(0, bbsz_idx)[:, :, 1:step+2] if dists is not None else None
             attn_clone = attn.index_select(0, bbsz_idx)[:, :, 1:step+2] if attn is not None else None
 
             # compute scores per token position
@@ -243,14 +246,24 @@ class SequenceGenerator(object):
                     else:
                         hypo_attn = None
 
+                    if knns_clone is not None:
+                        hypo_knns = knns_clone[i]
+                    else:
+                        hypo_knns = None
+                    
+                    if dists_clone is not None:
+                        hypo_dists = dists_clone[i]
+                    else:
+                        hypo_dists = None
+                    
                     return {
                         'tokens': tokens_clone[i],
                         'score': score,
                         'attention': hypo_attn,  # src_len x tgt_len
                         'alignment': None,
                         'positional_scores': pos_scores[i],
-                        'dists_full': dists_full,
-                        'knns_full': knns_full
+                        'dists_full': hypo_dists,
+                        'knns_full': hypo_knns
                     }
 
                 if len(finalized[sent]) < beam_size:
@@ -275,7 +288,7 @@ class SequenceGenerator(object):
                     reorder_state.view(-1, beam_size).add_(corr.unsqueeze(-1) * beam_size)
                 model.reorder_incremental_state(reorder_state)
                 encoder_outs = model.reorder_encoder_out(encoder_outs, reorder_state)
-
+            
             lprobs, avg_attn_scores, dists_full, knns_full = model.forward_decoder(
                 tokens[:, :step + 1], encoder_outs, temperature=self.temperature, **kwargs
             )
@@ -338,6 +351,16 @@ class SequenceGenerator(object):
                     attn = scores.new(bsz * beam_size, src_tokens.size(1), max_len + 2)
                     attn_buf = attn.clone()
                 attn[:, :, step + 1].copy_(avg_attn_scores)
+
+            # aggregate KNNs and Distances
+            if knns_full is not None:
+                if knns is None:
+                    knns = scores.new(bsz * beam_size, knns_full.size(1), max_len + 2).long()
+                knns[:, :, step + 1].copy_(knns_full)
+            if dists_full is not None:
+                if dists is None:
+                    dists = scores.new(bsz * beam_size, dists_full.size(1), max_len + 2)
+                dists[:, :, step + 1].copy_(dists_full)
 
             scores = scores.type_as(lprobs)
             scores_buf = scores_buf.type_as(lprobs)
@@ -425,6 +448,11 @@ class SequenceGenerator(object):
                 if attn is not None:
                     attn = attn.view(bsz, -1)[batch_idxs].view(new_bsz * beam_size, attn.size(1), -1)
                     attn_buf.resize_as_(attn)
+                if dists is not None:
+                    dists = dists.view(bsz, -1)[batch_idxs].view(new_bsz * beam_size, dists.size(1), -1)
+                if knns is not None:
+                    knns = knns.view(bsz, -1)[batch_idxs].view(new_bsz * beam_size, knns.size(1), -1)
+                
                 bsz = new_bsz
             else:
                 batch_idxs = None
@@ -491,6 +519,10 @@ class SequenceGenerator(object):
                     attn[:, :, :step + 2], dim=0, index=active_bbsz_idx,
                     out=attn_buf[:, :, :step + 2],
                 )
+            if knns is not None:
+                knns[:, :, :step+2] = torch.index_select(knns[:, :, :step + 2], dim=0, index=active_bbsz_idx) 
+            if dists is not None:
+                dists[:, :, :step+2] = torch.index_select(dists[:, :, :step + 2], dim=0, index=active_bbsz_idx) 
 
             # swap buffers
             tokens, tokens_buf = tokens_buf, tokens
@@ -613,13 +645,18 @@ class EnsembleModel(torch.nn.Module):
             yhat_knn_prob, dists_full, knns_full = dstore.get_knn_log_prob(
                     queries,
                     None,
-                    pad_idx = -1)  # TODO, what is the pad idx?
-                    #pad_idx=self.pad)            
+                    pad_idx=1)  # TODO(Get pad_idx in a more principled way)
             if self.args.fp16:
                 yhat_knn_prob = yhat_knn_prob.half()
                 probs = probs.half()
+            
             yhat_knn_prob = yhat_knn_prob.permute(1, 0, 2)
             yhat_knn_prob = yhat_knn_prob[:, -1, :]
+            dists_full = dists_full.permute(1, 0, 2)
+            dists_full = dists_full[:, -1, :]
+            knns_full = knns_full.permute(1, 0, 2)
+            knns_full = knns_full[:, -1, :]
+
             probs = combine_knn_and_vocab_probs(
                         yhat_knn_prob, probs, self.args.lmbda)
             return probs, attn, dists_full, knns_full

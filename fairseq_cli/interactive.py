@@ -91,7 +91,6 @@ def main(args):
         arg_overrides=eval(args.model_overrides),
         task=task,
     )
-
     for arg in vars(_model_args).keys():
         '''if arg not in {
             'self_target', 'future_target', 'past_target', 'tokens_per_sample',
@@ -102,6 +101,9 @@ def main(args):
         }:
             setattr(args, arg, getattr(_model_args, arg))
 
+    if args.task == "translation":
+        args.vocab_size = len(task.target_dictionary)  # TODO(Eric): Fix this.
+
     logger.info(args)
     
     if args.knnlm:
@@ -109,9 +111,6 @@ def main(args):
         print("Loading training tokens...")
         with open(args.input_tokens_file) as infile:
            train_tokens = infile.read().split()
-
-        print("TODO, REMOVE ME\n\n\n !!!!Skipping first training tokens...")
-        train_tokens = train_tokens[1536:] # TODO, remove this
 
     if args.buffer_size < 1:
         args.buffer_size = 1
@@ -233,18 +232,22 @@ def main(args):
                 #assert len(yhat_scores.tolist()) == len(word_tokens)
 
                 # TODO, trim off padding when its batched
-
-                context_size = 20
-                num_neighbors = 10
-                dists_full = dists_full[0][0]
-                dists_full = dists_full.cpu().detach().numpy()
-                knns_full = knns_full[0][0]
-                best_dist_indices = np.argsort(dists_full)[-num_neighbors:][::-1]
-                for j, neighbor_index in enumerate(best_dist_indices):
-                    distance = dists_full[neighbor_index]
-                    knn_index = knns_full[neighbor_index]
-                    print("Best neighbor {} (distance {:.2f}):".format(j, distance), " ".join(train_tokens[knn_index - context_size:knn_index]), "[[", train_tokens[knn_index], "]]")
-
+                
+                if args.task == 'translation':
+                    context_size = 10000
+                else:
+                    context_size = 20
+                num_neighbors = 5
+                for i in range(dists_full.shape[1]): # for sequence_length
+                    curr_dists_full = dists_full[:, i].cpu().numpy()
+                    curr_knns_full = knns_full[:, i].cpu().numpy()
+                    best_dist_indices = np.argsort(curr_dists_full)[-num_neighbors:][::-1]
+                    for j, neighbor_index in enumerate(best_dist_indices):
+                        distance = curr_dists_full[neighbor_index]
+                        knn_index = curr_knns_full[neighbor_index]
+                        return_string = ' '.join(train_tokens[max(knn_index - context_size, 0):knn_index]).split("</s>")[-1].strip() + ' [[ ' + train_tokens[knn_index] + ' ]]' 
+                        print("Best neighbor {} (distance {:.2f}):".format(j, distance), return_string)
+                    print()
 
         # update running id counter
         start_id += len(inputs)

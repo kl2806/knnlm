@@ -135,7 +135,7 @@ def _main(args, output_file):
             dstore_vals = np.memmap(args.dstore_mmap+'_vals.npy', dtype=np.int, mode='w+', shape=(args.dstore_size, 1))
         dstore_idx = 0
     if args.save_knnlm_dstore or args.knnlm:
-        source_tokens_file = open(args.output_tokens_file_prefix + '.src' , 'w')
+        # source_tokens_file = open(args.output_tokens_file_prefix + '.src' , 'w')
         target_tokens_file = open(args.output_tokens_file_prefix + '.tgt', 'w')
 
         # This is only for MT right now, use interactive.py for language modeling
@@ -161,9 +161,9 @@ def _main(args, output_file):
                 hypos = task.inference_step(generator, models, sample, prefix_tokens)
             num_generated_tokens = sum(len(h[0]['tokens']) for h in hypos)
             gen_timer.stop(num_generated_tokens)
-
+            
             if args.save_knnlm_dstore:
-                for i, hypos_i in enumerate(hypos):                    
+                for i, hypos_i in enumerate(hypos):
                     hypo = hypos_i[0]
                     shape = hypo['dstore_keys'].shape                    
                     if dstore_idx + shape[0] > args.dstore_size:
@@ -184,12 +184,15 @@ def _main(args, output_file):
                     dstore_idx += shape[0]                    
 
             if args.save_knnlm_dstore or args.knnlm:
-                # dump the tokens to a file, used for analysis and interactive printing
-                source_tokens = [task.source_dictionary[token] for token in hypo['source_tokens']]
-                source_tokens_file.write('\n'.join(source_tokens) + '\n')
+                for i, hypos_i in enumerate(hypos):
+                    hypo = hypos_i[0]
 
-                target_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
-                target_tokens_file.write('\n'.join(target_tokens) + '\n')
+                    # dump the tokens to a file, used for analysis and interactive printing
+                    # source_tokens = [task.source_dictionary[token] for token in hypo['source_tokens']]
+                    # source_tokens_file.write('\n'.join(source_tokens) + '\n')
+
+                    target_tokens = [task.target_dictionary[token] for token in hypo['tokens']]
+                    target_tokens_file.write('\n'.join(target_tokens) + '\n')
 
             for i, sample_id in enumerate(sample['id'].tolist()):
                 has_target = sample['target'] is not None
@@ -261,7 +264,6 @@ def _main(args, output_file):
                                     remove_bpe=None,
                                 )
                                 print('E-{}_{}\t{}'.format(sample_id, step, h_str), file=output_file)
-
                     # Score only the top hypothesis
                     if has_target and j == 0:
                         if align_dict is not None or args.remove_bpe is not None:
@@ -282,14 +284,20 @@ def _main(args, output_file):
     if has_target:
         logger.info('Generate {} with beam={}: {}'.format(args.gen_subset, args.beam, scorer.result_string()))
 
-    if args.save_knnlm_dstore or args.knnlm:
-        source_tokens_file.close()    
-        target_tokens_file.close()    
-
     if args.save_knnlm_dstore:
         print("dstore_idx", dstore_idx, "final shape", shape)
         print("Keys", dstore_keys.shape, dstore_keys.dtype)
         print("Vals", dstore_vals.shape, dstore_vals.dtype)
+        target_tokens_file.seek(0)
+        num_lines = len(target_tokens_file.readlines())
+        if dstore_idx != num_lines:
+            print('Warning: size of KNN datastore is {}, does not match number of lines in train tokens file which is {}'.format(dstore_idx, num_lines))
+
+    if args.save_knnlm_dstore or args.knnlm:
+        # source_tokens_file.close()    
+        target_tokens_file.close()    
+
+    
 
     return scorer
 
