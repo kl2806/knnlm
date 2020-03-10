@@ -234,20 +234,11 @@ If your hardware constraints make this too slow, you can run it without using fu
 To interactively sample from the KNN language model, and also print the retrieved neighbors, use the following:
 
 ```bash
-python interactive.py data-bin/wikitext-103 \
-	--path lm-checkpoints/checkpoint_best.pt \
-    --dstore-filename lm-checkpoints/dstore \
-    --indexfile lm-checkpoints/knn.index  \
-    --model-overrides "{'knn_keytype': 'last_ffn_input'}" \
-    --k 1024 --lmbda 1.0 --dstore-size 103225485 --knn-keytype last_ffn_input \
-    --probe 32 --knnlm --fp16 \
-    --task language_modeling --beam 1 --nbest 1 \
-    --input-tokens-file wiki.train.tokens \
-    --max-len-a 1 --max-len-b 10
+python interactive.py data-bin/wikitext-103 --path checkpoints/wt103_checkpoint_best.pt     --dstore-filename checkpoints/dstore     --indexfile checkpoints/knn.index      --model-overrides "{'knn_keytype': 'last_ffn_input'}"     --k 1024 --lmbda 0.0 --dstore-size 103225485 --knn-keytype last_ffn_input     --probe 32 --knnlm --fp16     --task language_modeling  --input-tokens-file wiki.train.tokens     --max-len-a 1 --max-len-b 10
+--dstore-fp16  --sampling --sampling-topk 10 --nbest 1 --beam 1
 ```
 
 `--input-tokens-file wiki.train.tokens` is the file created from `--output-tokens-file` in the `eval_lm.py` run above. The length of the generation is given by ax + b, where `--max-len-a` is a and `--max-len-b` is b. This command will do greedy decoding from the model, to run sampling, use options like `--sampling --sampling_topk 10`. 
 
-- TODO, get MT numbers.
 - TODO, get interactive printing for multiple steps.
 - TODO, MT interactive working. It will probably print only the target side now.
